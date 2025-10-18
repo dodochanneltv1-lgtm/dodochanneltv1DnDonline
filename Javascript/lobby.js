@@ -1,10 +1,17 @@
 // Javascript/lobby.js
 
-// 1. ตรวจสอบสถานะการล็อกอิน
 firebase.auth().onAuthStateChanged(user => {
     if (user) {
         console.log("ผู้ใช้ล็อกอินอยู่:", user.uid);
-        document.getElementById('userEmail').textContent = user.email;
+        
+        // โหลดข้อมูลผู้ใช้จาก Database
+        db.ref('users/' + user.uid).once('value').then((snapshot) => {
+            const userData = snapshot.val();
+            if (userData) {
+                document.getElementById('userEmail').textContent = userData.username;
+            }
+        });
+        
         loadPublicRooms(); // เริ่มโหลดรายชื่อห้อง
     } else {
         console.log("ไม่มีผู้ใช้ล็อกอินอยู่");
@@ -15,41 +22,50 @@ firebase.auth().onAuthStateChanged(user => {
 // 2. ฟังก์ชันสร้างห้อง
 function createRoom() {
     const roomName = document.getElementById('roomName').value.trim();
-    const roomPassword = document.getElementById('roomPassword').value; // รหัสเข้าห้อง (ถ้ามี)
-    // ⭐️ [FIXED] ดึงค่า dmPassword จาก Element ใหม่
-    const dmPassword = document.getElementById('dmPassword').value.trim(); 
+    const roomPassword = document.getElementById('roomPassword').value;
+    const dmPassword = document.getElementById('dmPassword').value.trim();
     const user = firebase.auth().currentUser;
+
+    if (!user) {
+        Swal.fire('ข้อผิดพลาด', 'กรุณาล็อกอินก่อนสร้างห้อง', 'error');
+        return;
+    }
 
     if (!roomName) {
         Swal.fire('ข้อผิดพลาด', 'กรุณากรอกชื่อห้อง', 'error');
         return;
     }
     
-    // ⭐️ [FIXED] เพิ่มการตรวจสอบ DM Password (สาเหตุของ Bug)
     if (!dmPassword) {
-         Swal.fire('ข้อผิดพลาด', 'กรุณากำหนดรหัสผ่านสำหรับ DM Panel (รหัส DM Panel)', 'error');
+        Swal.fire('ข้อผิดพลาด', 'กรุณากำหนดรหัสผ่านสำหรับ DM Panel', 'error');
         return;
     }
 
-    // สร้าง ID ห้องแบบสุ่ม 6 หลัก
-    const roomId = Math.floor(100000 + Math.random() * 900000).toString();
-    const roomData = {
-        name: roomName,
-        dmUid: user.uid,
-        dmEmail: user.email,
-        // ⭐️ [FIXED] บันทึก dmPassword
-        dmPassword: dmPassword, 
-        createdAt: new Date().toISOString()
-    };
-    
-    if (roomPassword) {
-        roomData.password = roomPassword; // รหัสผ่านเข้าห้อง (ถ้ามี)
-    }
+    // โหลดข้อมูล username จาก Database
+    db.ref('users/' + user.uid).once('value').then((snapshot) => {
+        const userData = snapshot.val();
+        const username = userData ? userData.username : 'Unknown';
 
-    db.ref('rooms/' + roomId).set(roomData).then(() => {
+        // สร้าง ID ห้องแบบสุ่ม 6 หลัก
+        const roomId = Math.floor(100000 + Math.random() * 900000).toString();
+        const roomData = {
+            name: roomName,
+            dmUid: user.uid,
+            dmUsername: username, // ใช้ username จาก Database
+            dmPassword: dmPassword,
+            createdAt: new Date().toISOString()
+        };
+        
+        if (roomPassword) {
+            roomData.password = roomPassword;
+        }
+
+        return db.ref('rooms/' + roomId).set(roomData);
+    }).then(() => {
+        const roomId = Math.floor(100000 + Math.random() * 900000).toString();
         sessionStorage.setItem('roomId', roomId);
         Swal.fire('สร้างห้องสำเร็จ', `ID ห้องของคุณคือ: ${roomId}`, 'success');
-        window.location.href = 'dm-panel.html'; // พา DM เข้าแผงควบคุม
+        window.location.href = 'dm-panel.html';
     }).catch(error => {
         Swal.fire('ผิดพลาด', `ไม่สามารถสร้างห้องได้: ${error.message}`, 'error');
     });
