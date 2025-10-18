@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        /* สไตล์สำหรับหน้า Register/Login โดยเฉพาะ */
         body {
             display: flex;
             justify-content: center;
@@ -29,7 +28,7 @@
             margin-bottom: 30px;
         }
         .auth-container input {
-            margin-bottom: 15px; /* เพิ่มระยะห่างระหว่างช่อง */
+            margin-bottom: 15px;
         }
         .auth-container a {
             color: #ffc107;
@@ -40,32 +39,33 @@
         }
     </style>
 </head>
-<body>
+    <body>
 
-    <div class="auth-container">
-        <h1>สร้างบัญชีใหม่</h1>
-        
-        <label for="email">อีเมล:</label>
-        <input type="email" id="email" placeholder="กรอกอีเมลของคุณ" required>
-        
-        <label for="password">รหัสผ่าน:</label>
-        <input type="password" id="password" placeholder="อย่างน้อย 6 ตัวอักษร" required>
-        
-        <label for="confirmPassword">ยืนยันรหัสผ่าน:</label>
-        <input type="password" id="confirmPassword" placeholder="กรอกรหัสผ่านอีกครั้ง" required>
-        
-        <button onclick="registerUser()">สมัครสมาชิก</button>
-        
-        <p style="margin-top: 20px;">
-            มีบัญชีอยู่แล้ว? <a href="login.html">เข้าสู่ระบบที่นี่</a>
-        </p>
-    </div>
+        <div class="auth-container">
+            <h1>สร้างบัญชีใหม่</h1>
+            
+            <label for="username">ชื่อผู้ใช้:</label>
+            <input type="text" id="username" placeholder="กรอกชื่อผู้ใช้" required>
+            
+            <label for="password">รหัสผ่าน:</label>
+            <input type="password" id="password" placeholder="อย่างน้อย 6 ตัวอักษร" required>
+            
+            <label for="confirmPassword">ยืนยันรหัสผ่าน:</label>
+            <input type="password" id="confirmPassword" placeholder="กรอกรหัสผ่านอีกครั้ง" required>
+            
+            <button onclick="registerUser()">สมัครสมาชิก</button>
+            
+            <p style="margin-top: 20px;">
+                มีบัญชีอยู่แล้ว? <a href="login.html">เข้าสู่ระบบที่นี่</a>
+            </p>
+        </div>
 
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="Javascript/firebase-init.js"></script>
-    
-    <script src="Javascript/auth.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script> <!-- เพิ่มบรรทัดนี้ -->
+        <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+        <script src="Javascript/firebase-init.js"></script>
+        
+        <script src="Javascript/auth.js"></script>
 
-</body>
+    </body>
 </html>
