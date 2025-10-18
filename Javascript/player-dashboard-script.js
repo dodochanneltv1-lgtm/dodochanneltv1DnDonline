@@ -1,3 +1,5 @@
+// Javascript/player-dashboard-script.js
+
 // =================================================================================
 // D&D Player Dashboard - Real-time Version with Firebase
 // =================================================================================
@@ -5,8 +7,7 @@
 let previousPlayerState = null; // สำหรับเปรียบเทียบค่าเก่า-ใหม่ เพื่อทำไฮไลท์
 
 // =================================================================================
-// ส่วนที่ 1: Utility Functions (เหมือนเดิม)
-// ฟังก์ชันคำนวณต่างๆ ที่ไม่ต้องแก้ไข
+// ส่วนที่ 1: Utility Functions 
 // =================================================================================
 
 function showCustomAlert(message, iconType = 'info') {
@@ -47,22 +48,66 @@ function getClassStatBonus(charClass) {
     return { ...defaultStats, ...classBonuses[charClass] };
 }
 
+/**
+ * [แก้ไข] นำฟังก์ชัน calculateHP ที่ถูกต้องจาก charector.js มาใช้
+ */
 function calculateHP(charRace, charClass, finalCon) {
     const racialBaseHP = {
-        'มนุษย์': 10, 'เอลฟ์': 8, 'คนแคระ': 12, 'ฮาล์ฟลิ่ง': 8, 'ไทฟลิ่ง': 9,
-        'แวมไพร์': 9, 'เงือก': 10, 'ออร์ค': 14, 'โนม': 7, 'เอลฟ์ดำ': 8,
-        'นางฟ้า': 6, 'มาร': 11, 'โกเลม': 18
+        'มนุษย์': 10, 
+        'เอลฟ์': 8, 
+        'คนแคระ': 12, 
+        'ฮาล์ฟลิ่ง': 8, 
+        'ไทฟลิ่ง': 9, 
+        'แวมไพร์': 9, 
+        'เงือก': 10, 
+        'ออร์ค': 14, 
+        'โนม': 7, 
+        'เอลฟ์ดำ': 8, 
+        'นางฟ้า': 6, 
+        'มาร': 11, 
+        'โกเลม': 18,
+        'อันเดด': 25,
+        'ครึ่งมังกร': 20,
+        'มังกร': 40 ,
+        'ครึ่งเทพ': 30,
+        'พระเจ้า': 100
     };
     const classBaseHP = {
-      'นักรบ': 12, 'นักเวท': 4, 'นักบวช': 8, 'โจร': 8, 'เรนเจอร์': 10, 'อัศวินศักดิ์สิทธิ์': 14,
-      'บาร์บาเรียน': 16, 'พ่อค้า': 6, 'แทงค์': 25, 'นักปราชญ์': 4, 'อัศวิน': 13, 'เจ้าเมือง': 15,
-      'นักดาบเวทย์': 10 , 'นักบุญหญิง': 9, 'นักฆ่า': 11, 'สตรีศักดิ์สิทธิ์': 10, 'ผู้กล้า': 18, 'จอมมาร': 22, 'เทพเจ้า': 50
+      'บาร์บาเรียน': 16,
+      'แทงค์': 25, 
+
+      'นักรบ': 12, 
+      'นักดาบเวทย์': 10 ,
+
+      'อัศวิน': 13, 
+      'อัศวินศักดิ์สิทธิ์': 14,
+      'ผู้กล้า': 18,
+
+      'นักเวท': 4, 
+      'นักบวช': 8,
+      'นักบุญหญิง': 9,
+      'สตรีศักดิ์สิทธิ์': 10,
+
+      'โจร': 8, 
+      'นักฆ่า': 11,
+      'เรนเจอร์': 10,
+
+      'พ่อค้า': 6, 
+      'นักปราชญ์': 4, 
+      'เจ้าเมือง': 15,
+
+      'จอมมาร': 22,
+
+      'เทพเจ้า': 50
     };
     const conModifier = Math.floor((finalCon - 10) / 2);
-    const raceHP = racialBaseHP[charRace] || 8;
-    const classHP = classBaseHP[charClass] || 6;
+    const raceHP = racialBaseHP[charRace] || 8; // เผ่าที่ไม่ระบุได้ 8
+    const classHP = classBaseHP[charClass] || 6; // อาชีพที่ไม่ระบุได้ 6
+    
+    // สูตรใหม่: HP เผ่า + HP คลาส + โบนัส CON
     return raceHP + classHP + conModifier;
 }
+
 
 function calculateTotalStat(charData, statKey) {
     if (!charData || !charData.stats) return 0;
@@ -80,13 +125,12 @@ function calculateTotalStat(charData, statKey) {
 }
 
 // =================================================================================
-// ส่วนที่ 2: ฟังก์ชันแสดงผล (Display Functions) - แก้ไขให้รับข้อมูลจาก Firebase
+// ส่วนที่ 2: ฟังก์ชันแสดงผล (Display Functions)
 // =================================================================================
 
 function displayCharacter(character) {
     const infoPanel = document.getElementById("characterInfoPanel");
-    if (!character || !infoPanel) return;
-
+    
     document.getElementById("name").textContent = character.name || "-";
     document.getElementById("race").textContent = character.race || "-";
     document.getElementById("class").textContent = character.class || "-";
@@ -102,7 +146,8 @@ function displayCharacter(character) {
         Level: character.level || 1,
         TempLevel: character.tempLevel || 0,
         HP: character.hp,
-        MaxHP: calculateHP(character.race, character.class, calculateTotalStat(character, 'CON')),
+        // ใช้ calculateHP ที่ถูกต้องแล้ว
+        MaxHP: calculateHP(character.race, character.class, calculateTotalStat(character, 'CON')), 
         STR: calculateTotalStat(character, 'STR'),
         DEX: calculateTotalStat(character, 'DEX'),
         CON: calculateTotalStat(character, 'CON'),
@@ -110,64 +155,53 @@ function displayCharacter(character) {
         WIS: calculateTotalStat(character, 'WIS'),
         CHA: calculateTotalStat(character, 'CHA'),
     };
+    
+    // Logic การอัปเดตค่า Stat พร้อมไฮไลท์
+    const updateSpanContent = (id, value, isHP = false) => {
+        const span = document.getElementById(id);
+        if (!span) return;
+        
+        const statKey = id.toUpperCase();
+        const oldValue = previousPlayerState?.[statKey] ?? value;
+        const newValue = value;
 
-    let html = `<h2>ข้อมูลตัวละคร</h2>
-                <div style="padding: 10px; text-align: center;">
-                    <label for="characterSelect"><strong>เลือกตัวละคร:</strong></label>
-                    <select id="characterSelect" onchange="switchCharacter()"></select>
-                </div>
-                <p><strong>ชื่อ:</strong> <span>${character.name}</span></p>
-                <p><strong>เผ่าพันธุ์:</strong> <span>${character.race}</span></p>
-                <p><strong>อาชีพ:</strong> <span>${character.class}</span></p>`;
-
-    if (!previousPlayerState || previousPlayerState.name !== character.name) {
-        let levelDisplay = `${currentStats.Level}`;
-        if (currentStats.TempLevel !== 0) {
-            const totalLevel = currentStats.Level + currentStats.TempLevel;
-            levelDisplay += ` <span style="color: ${currentStats.TempLevel > 0 ? buffColor : debuffColor}; ${shadowStyle}">(${totalLevel}) ${currentStats.TempLevel > 0 ? '⏫' : '⏬'}</span>`;
-        }
-        html += `<p><strong>เลเวล:</strong> ${levelDisplay}</p>`;
-        html += `<p><strong>พลังชีวิต:</strong> ${currentStats.HP} / ${currentStats.MaxHP}</p>`;
-        html += `<ul>
-                    <li>พลังโจมตี (STR): ${currentStats.STR}</li>
-                    <li>ความคล่องแคล่ว (DEX): ${currentStats.DEX}</li>
-                    <li>ความทนทาน (CON): ${currentStats.CON}</li>
-                    <li>สติปัญญา (INT): ${currentStats.INT}</li>
-                    <li>จิตใจ (WIS): ${currentStats.WIS}</li>
-                    <li>เสน่ห์ (CHA): ${currentStats.CHA}</li>
-                 </ul>`;
-    } else {
-        let levelDisplay = '';
-        if(previousPlayerState.Level !== currentStats.Level){
-            levelDisplay = `${previousPlayerState.Level} -> <span style="color: ${currentStats.Level > previousPlayerState.Level ? buffColor : debuffColor}; ${shadowStyle}">${currentStats.Level} ${currentStats.Level > previousPlayerState.Level ? '⏫' : '⏬'}</span>`;
-        } else {
-            levelDisplay = `${currentStats.Level}`;
-            if (currentStats.TempLevel !== 0) {
-                const totalLevel = currentStats.Level + currentStats.TempLevel;
-                levelDisplay += ` <span style="color: ${currentStats.TempLevel > 0 ? buffColor : debuffColor}; ${shadowStyle}">(${totalLevel}) ${currentStats.TempLevel > 0 ? '⏫' : '⏬'}</span>`;
+        if (!previousPlayerState || previousPlayerState.name !== character.name || oldValue === newValue) {
+            if (isHP) {
+                span.innerHTML = `${newValue} / ${currentStats.MaxHP}`;
+            } else if (id === 'level') {
+                let levelDisplay = `${currentStats.Level}`;
+                if (currentStats.TempLevel !== 0) {
+                    const totalLevel = currentStats.Level + currentStats.TempLevel;
+                    levelDisplay += ` <span style="color: ${currentStats.TempLevel > 0 ? buffColor : debuffColor}; ${shadowStyle}">(${totalLevel}) ${currentStats.TempLevel > 0 ? '⏫' : '⏬'}</span>`;
+                }
+                span.innerHTML = levelDisplay;
+            } else {
+                span.textContent = newValue;
             }
-        }
-        html += `<p><strong>เลเวล:</strong> ${levelDisplay}</p>`;
-
-        const statOrder = ['HP', 'STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
-        for(const stat of statOrder){
-            const oldValue = previousPlayerState[stat];
-            const newValue = currentStats[stat];
+        } else {
+            // แสดงการเปลี่ยนแปลง: Old Value -> New Value
             let indicator = newValue > oldValue ? '⏫' : (newValue < oldValue ? '⏬' : '');
             let color = newValue > oldValue ? buffColor : debuffColor;
-
-            if (stat === 'HP') {
-                html += `<p><strong>พลังชีวิต:</strong> ${oldValue !== newValue ? `${oldValue} -> <span style="color:${color}; ${shadowStyle}">${newValue} ${indicator}</span>` : newValue} / ${currentStats.MaxHP}</p><ul>`;
+            
+            if (isHP) {
+                 span.innerHTML = `${oldValue} -> <span style="color:${color}; ${shadowStyle}">${newValue} ${indicator}</span> / ${currentStats.MaxHP}`;
             } else {
-                const label = {'STR':'พลังโจมตี', 'DEX':'ความคล่องแคล่ว', 'CON':'ความทนทาน', 'INT':'สติปัญญา', 'WIS':'จิตใจ', 'CHA':'เสน่ห์'}[stat];
-                html += `<li>${label} (${stat}): ${oldValue !== newValue ? `${oldValue} -> <span style="color:${color}; ${shadowStyle}">${newValue} ${indicator}</span>` : newValue}</li>`;
+                span.innerHTML = `${oldValue} -> <span style="color:${color}; ${shadowStyle}">${newValue} ${indicator}</span>`;
             }
         }
-        html += `</ul>`;
-    }
+    };
+
+    updateSpanContent('level', currentStats.Level);
+    updateSpanContent('hp', currentStats.HP, true);
+    document.getElementById("hp").textContent = `${currentStats.HP} / ${currentStats.MaxHP}`; // Fallback for initial load
+    updateSpanContent('str', currentStats.STR);
+    updateSpanContent('dex', currentStats.DEX);
+    updateSpanContent('con', currentStats.CON);
+    updateSpanContent('int', currentStats.INT);
+    updateSpanContent('wis', currentStats.WIS);
+    updateSpanContent('cha', currentStats.CHA);
     
-    infoPanel.innerHTML = html;
-    
+
     const upgradeButton = document.getElementById("goToStatsButton");
     const freePoints = character.freeStatPoints || 0;
     if (freePoints > 0) {
@@ -179,6 +213,7 @@ function displayCharacter(character) {
     
     previousPlayerState = { name: character.name, ...currentStats };
 }
+
 
 function displayInventory(characterData) {
     const inventory = characterData?.inventory || [];
@@ -243,7 +278,12 @@ function displayEnemy(characterData) {
         }
         document.getElementById("enemyName").textContent = "-";
         document.getElementById("enemyHp").textContent = "-";
-        // ... clear other stats ...
+        document.getElementById("enemyStr").textContent = "-";
+        document.getElementById("enemyDex").textContent = "-";
+        document.getElementById("enemyCon").textContent = "-";
+        document.getElementById("enemyInt").textContent = "-";
+        document.getElementById("enemyWis").textContent = "-";
+        document.getElementById("enemyCha").textContent = "-";
     }
 }
 
@@ -267,6 +307,7 @@ async function playerRollDice() {
 
     if (isNaN(diceType) || isNaN(diceCount) || diceCount <= 0) return;
 
+    // ต้องมีฟังก์ชัน showDiceRollAnimation จาก dice-roller.js
     const { results } = await showDiceRollAnimation(
         diceCount, diceType, 'player-dice-animation-area', 'dice-result', rollButton
     );
@@ -283,14 +324,6 @@ async function playerRollDice() {
     db.ref(`rooms/${roomId}/diceLogs`).push(playerLog);
 }
 
-function switchCharacter() {
-    const selectedName = document.getElementById("characterSelect").value;
-    if (selectedName) {
-        localStorage.setItem("character", selectedName);
-        location.reload();
-    }
-}
-
 // =================================================================================
 // ส่วนที่ 4: การเริ่มต้นและ lắng nghe ข้อมูล (Real-time Core)
 // =================================================================================
@@ -300,20 +333,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const roomId = sessionStorage.getItem('roomId');
     const currentCharacterName = localStorage.getItem("character");
 
-    // [FIXED] 2. ตรวจสอบว่ามีข้อมูลครบถ้วนหรือไม่ ถ้าไม่ ให้กลับไปที่ Lobby
+    // [FIXED] 2. ตรวจสอบว่ามีข้อมูลครบถ้วนหรือไม่
     if (!roomId) {
         alert("ไม่พบข้อมูลห้อง! กำลังกลับไปที่ Lobby...");
         window.location.replace('lobby.html');
         return;
     }
+    
+    // [แก้ไข]: แสดงปุ่มสร้างตัวละครเมื่อไม่มีตัวละคร
     if (!currentCharacterName) {
         const infoPanel = document.getElementById("characterInfoPanel");
-        infoPanel.innerHTML = `<h2>ข้อมูลตัวละคร</h2><p>คุณยังไม่มีตัวละครในห้องนี้</p><a href="PlayerCharecter.html"><button>ไปหน้าสร้างตัวละคร</button></a>`;
-        // ไม่ต้อง return เพราะยังต้องฟังสัญญาณอื่น ๆ เช่น story
+        // เขียน HTML ใหม่เฉพาะส่วนที่จำเป็นเพื่อให้แสดงปุ่มสร้างตัวละคร
+        infoPanel.innerHTML = `
+            <h2>ข้อมูลตัวละคร</h2>
+            <p style="text-align: center;">คุณยังไม่มีตัวละครในห้องนี้</p>
+            <a href="PlayerCharecter.html">
+                <button style="width: 100%; margin-top: 20px;">สร้างตัวละคร</button>
+            </a>
+        `;
+        // ยังคงต้องฟัง Story ต่อไป
     }
     console.log(`ผู้เล่น ${currentCharacterName || '(ยังไม่มีตัวละคร)'} อยู่ในห้อง: ${roomId}`);
 
-    // [FIXED] 3. lắng nghe ข้อมูลตัวละคร "ภายในห้องนี้เท่านั้น"
+    // [FIXED] 3. lắng nghe ข้อมูลตัวละคร "ภายในห้องนี้เท่านั้น" (ถ้ามีตัวละคร)
     if (currentCharacterName) {
         const playerRef = db.ref(`rooms/${roomId}/players/${currentCharacterName}`);
         playerRef.on('value', (snapshot) => {
@@ -335,30 +377,5 @@ document.addEventListener('DOMContentLoaded', () => {
     const storyRef = db.ref(`rooms/${roomId}/story`);
     storyRef.on('value', (snapshot) => {
         displayStory(snapshot.val());
-    });
-
-    // [FIXED] 5. โหลดรายชื่อผู้เล่นทั้งหมด "ภายในห้องนี้เท่านั้น" สำหรับ Dropdown
-    const allPlayersInRoomRef = db.ref(`rooms/${roomId}/players`);
-    allPlayersInRoomRef.on('value', (snapshot) => {
-        const players = snapshot.val();
-        const select = document.getElementById("characterSelect");
-        if (!select) return;
-
-        select.innerHTML = "";
-        if (!players) {
-            select.innerHTML = "<option>ยังไม่มีตัวละครอื่นในห้อง</option>";
-            return;
-        }
-
-        for (let name in players) {
-            const option = document.createElement("option");
-            option.value = name;
-            option.textContent = name;
-            select.appendChild(option);
-        }
-        
-        if (currentCharacterName) {
-            select.value = currentCharacterName;
-        }
     });
 });
