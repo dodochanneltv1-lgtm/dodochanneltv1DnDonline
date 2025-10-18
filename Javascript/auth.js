@@ -1,18 +1,18 @@
-// Javascript/auth.js
+// Javascript/auth.js - ระบบสมัครสมาชิกแบบใช้ Firebase Authentication
 
 function registerUser() {
-    const email = document.getElementById('email').value;
+    const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
     const confirmPassword = document.getElementById('confirmPassword').value;
 
     // --- 1. ตรวจสอบข้อมูลเบื้องต้น ---
-    if (!email || !password || !confirmPassword) {
+    if (!username || !password || !confirmPassword) {
         Swal.fire('ข้อผิดพลาด!', 'กรุณากรอกข้อมูลให้ครบทุกช่อง', 'error');
         return;
     }
 
-    if (password !== confirmPassword) {
-        Swal.fire('ข้อผิดพลาด!', 'รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน', 'error');
+    if (username.length < 3) {
+        Swal.fire('ข้อผิดพลาด!', 'ชื่อผู้ใช้ต้องมีความยาวอย่างน้อย 3 ตัวอักษร', 'error');
         return;
     }
 
@@ -21,36 +21,52 @@ function registerUser() {
         return;
     }
 
-    // --- 2. เรียกใช้ Firebase Authentication เพื่อสร้างผู้ใช้ใหม่ ---
+    if (password !== confirmPassword) {
+        Swal.fire('ข้อผิดพลาด!', 'รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน', 'error');
+        return;
+    }
+
+    // --- 2. ตรวจสอบว่ามีชื่อผู้ใช้นี้อยู่แล้วหรือไม่ ---
+    const email = username + "@dnd.local";
+    
+    // ใช้ Firebase Authentication สร้างผู้ใช้ใหม่
     firebase.auth().createUserWithEmailAndPassword(email, password)
         .then((userCredential) => {
             // สมัครสมาชิกสำเร็จ
             const user = userCredential.user;
             console.log("สร้างผู้ใช้สำเร็จ:", user.uid);
             
+            // บันทึกข้อมูลเพิ่มเติมใน Realtime Database
+            const userData = {
+                username: username,
+                createdAt: new Date().toISOString(),
+                lastLogin: new Date().toISOString()
+            };
+            
+            return db.ref('users/' + user.uid).set(userData);
+        })
+        .then(() => {
             Swal.fire({
                 title: 'สมัครสมาชิกสำเร็จ!',
-                text: `ยินดีต้อนรับ ${user.email}`,
+                text: `ยินดีต้อนรับ ${username}`,
                 icon: 'success',
                 timer: 2000,
                 showConfirmButton: false
             }).then(() => {
-                // ส่งผู้ใช้ไปหน้า login เพื่อเข้าสู่ระบบ
-                window.location.href = 'login.html';
+                window.location.href = 'lobby.html';
             });
         })
         .catch((error) => {
-            // เกิดข้อผิดพลาด
             console.error("Auth Error:", error.code, error.message);
             let errorMessage = "เกิดข้อผิดพลาดที่ไม่รู้จัก";
 
-            // แปลข้อความ Error ของ Firebase ให้เป็นมิตรกับผู้ใช้
+            // แปลข้อความ Error
             switch (error.code) {
                 case 'auth/email-already-in-use':
-                    errorMessage = 'อีเมลนี้มีผู้ใช้งานในระบบแล้ว';
+                    errorMessage = 'ชื่อผู้ใช้นี้มีผู้ใช้งานแล้ว';
                     break;
                 case 'auth/invalid-email':
-                    errorMessage = 'รูปแบบอีเมลไม่ถูกต้อง';
+                    errorMessage = 'ชื่อผู้ใช้มีอักขระไม่ถูกต้อง';
                     break;
                 case 'auth/weak-password':
                     errorMessage = 'รหัสผ่านไม่ปลอดภัย (ต้องมีอย่างน้อย 6 ตัวอักษร)';
@@ -61,55 +77,77 @@ function registerUser() {
         });
 }
 
-// เพิ่มฟังก์ชันนี้ต่อท้ายในไฟล์ Javascript/auth.js
-
 function loginUser() {
-    const email = document.getElementById('email').value;
+    const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
 
     // --- 1. ตรวจสอบข้อมูลเบื้องต้น ---
-    if (!email || !password) {
-        Swal.fire('ข้อผิดพลาด!', 'กรุณากรอกอีเมลและรหัสผ่าน', 'error');
+    if (!username || !password) {
+        Swal.fire('ข้อผิดพลาด!', 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน', 'error');
         return;
     }
 
-    // --- 2. เรียกใช้ Firebase Authentication เพื่อเข้าสู่ระบบ ---
+    // --- 2. ใช้ Firebase Authentication ล็อกอิน ---
+    const email = username + "@dnd.local";
+    
     firebase.auth().signInWithEmailAndPassword(email, password)
         .then((userCredential) => {
             // ล็อกอินสำเร็จ
             const user = userCredential.user;
             console.log("ล็อกอินสำเร็จ:", user.uid);
 
+            // อัปเดตเวลาล็อกอินล่าสุดใน Database
+            return db.ref('users/' + user.uid).update({
+                lastLogin: new Date().toISOString()
+            });
+        })
+        .then(() => {
             Swal.fire({
                 title: 'เข้าสู่ระบบสำเร็จ!',
                 icon: 'success',
                 timer: 1500,
                 showConfirmButton: false
             }).then(() => {
-                // ⭐️ ส่งผู้ใช้ไปที่หน้า Lobby (ที่เราจะสร้างในสเต็ปถัดไป)
-                window.location.href = 'lobby.html'; 
+                window.location.href = 'lobby.html';
             });
         })
         .catch((error) => {
-            // เกิดข้อผิดพลาด
             console.error("Auth Error:", error.code, error.message);
-            let errorMessage = "อีเมลหรือรหัสผ่านไม่ถูกต้อง"; // ข้อความเริ่มต้น
+            let errorMessage = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
 
-            // (Firebase จะให้ error 'auth/user-not-found' หรือ 'auth/wrong-password' 
-            // แต่เพื่อความปลอดภัย เราไม่ควรบอกผู้ใช้ว่าผิดที่อีเมลหรือรหัสผ่าน)
-            
             Swal.fire('เข้าสู่ระบบไม่สำเร็จ!', errorMessage, 'error');
         });
 }
 
-// เพิ่มฟังก์ชันนี้ใน Javascript/auth.js
 function logoutUser() {
     firebase.auth().signOut()
         .then(() => {
             console.log("ออกจากระบบสำเร็จ");
-            window.location.href = 'login.html'; // กลับไปหน้าล็อกอิน
+            window.location.href = 'login.html';
         })
         .catch((error) => {
             console.error("Logout Error:", error);
         });
 }
+
+// ตรวจสอบสถานะการล็อกอิน
+firebase.auth().onAuthStateChanged((user) => {
+    if (user) {
+        console.log("ผู้ใช้ล็อกอินอยู่:", user.uid);
+        // โหลดข้อมูลผู้ใช้จาก Database
+        db.ref('users/' + user.uid).once('value').then((snapshot) => {
+            const userData = snapshot.val();
+            if (userData) {
+                console.log("ข้อมูลผู้ใช้:", userData.username);
+            }
+        });
+    } else {
+        console.log("ไม่มีผู้ใช้ล็อกอินอยู่");
+        // ถ้าอยู่ในหน้าที่ต้องล็อกอิน ให้ redirect ไป login
+        if (window.location.pathname.includes('lobby.html') || 
+            window.location.pathname.includes('dm-panel.html') ||
+            window.location.pathname.includes('player-dashboard.html')) {
+            window.location.href = 'login.html';
+        }
+    }
+});
