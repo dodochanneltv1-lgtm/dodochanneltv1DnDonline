@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team View - ข้อมูลเพื่อนร่วมทีม</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        /* สไตล์สำหรับ Team View */
+        .team-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .player-card {
+            background: rgba(10, 0, 0, 0.75);
+            border: 1px solid rgba(0, 123, 255, 0.5);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 0 15px rgba(0, 123, 255, 0.4);
+        }
+        .player-card h3 {
+            color: #8be4ff;
+            border-bottom: 1px solid rgba(0, 123, 255, 0.4);
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .player-card p {
+            margin: 5px 0;
+            font-size: 0.95em;
+        }
+        .player-stats ul {
+            list-style: none; /* เปลี่ยนเป็น none เพื่อให้ดูเป็นระเบียบ */
+            padding: 0;
+            margin-top: 10px;
+        }
+        .player-stats li {
+             margin-left: 0;
+             padding-left: 0;
+             font-family: 'Cinzel', serif; /* ใช้ Cinzel สำหรับ Stats */
+        }
+    </style>
+</head>
+<body>
+    <h1>ข้อมูลเพื่อนร่วมทีม (Team View)</h1>
+    <p>นี่คือข้อมูลคร่าวๆ ของตัวละครอื่นๆ ในห้องนี้ (ไม่แสดงไอเทม/เควสส่วนตัว)</p>
+    <button onclick="window.location.href='player-dashboard.html'" class="refresh-btn">ย้อนกลับแดชบอร์ด</button>
+    <div class="team-grid" id="teamViewContainer">
+        <p style="grid-column: 1 / -1; text-align: center;">กำลังโหลดข้อมูลทีม...</p>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="Javascript/firebase-init.js"></script>
+    <script src="Javascript/charector.js"></script>
+    <script src="Javascript/player-dashboard-script.js"></script> 
+    
+    <script>
+        // ดึงฟังก์ชันคำนวณ stats จากไฟล์ที่โหลดมาก่อนหน้า
+        // ตรวจสอบว่าฟังก์ชันถูกกำหนดใน window. หรือไม่ (หาก player-dashboard-script.js ไม่ได้กำหนดไว้ใน window)
+        // เพื่อให้ง่าย เราจะใช้ฟังก์ชันที่กำหนดใน player-dashboard-script.js โดยตรง
+        
+        const calculateTotalStat = window.calculateTotalStat;
+        const calculateHP = window.calculateHP;
+        const currentCharacterName = localStorage.getItem("character");
+        const roomId = sessionStorage.getItem('roomId');
+
+        if (!roomId || !currentCharacterName) {
+            Swal.fire('ข้อผิดพลาด', 'โปรดเข้าร่วมห้องและสร้างตัวละครก่อน', 'error').then(() => {
+                window.location.replace('lobby.html');
+            });
+        }
+
+        const teamViewContainer = document.getElementById('teamViewContainer');
+
+        // [FIXED] ใช้ Listener แบบ Realtime เพื่ออัปเดตข้อมูลทีม
+        db.ref(`rooms/${roomId}/players`).on('value', (snapshot) => {
+            const allPlayers = snapshot.val();
+            teamViewContainer.innerHTML = ''; // Clear previous data
+            let foundTeammates = false;
+
+            if (!allPlayers) {
+                teamViewContainer.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">ยังไม่มีผู้เล่นอื่นเข้าร่วมห้อง</p>';
+                return;
+            }
+
+            for (const name in allPlayers) {
+                if (name !== currentCharacterName) { // ไม่แสดงข้อมูลตัวเอง
+                    foundTeammates = true;
+                    const player = allPlayers[name];
+                    const finalCon = calculateTotalStat(player, 'CON');
+                    const maxHp = calculateHP(player.race, player.class, finalCon);
+                    const totalLevel = (player.level || 1) + (player.tempLevel || 0);
+
+                    const card = document.createElement('div');
+                    card.className = 'player-card';
+                    card.innerHTML = `
+                        <h3>${player.name} (Lv. ${totalLevel})</h3>
+                        <p><strong>เผ่า:</strong> ${player.race} &bull; <strong>อาชีพ:</strong> ${player.class}</p>
+                        <p><strong>HP:</strong> ${player.hp} / ${maxHp}</p>
+                        <p><strong>เพศ:</strong> ${player.gender || '-'} &bull; <strong>อายุ:</strong> ${player.age || '-'}</p>
+                        <details>
+                            <summary style="font-weight: bold; margin-top: 10px;">ภูมิหลัง</summary>
+                            <p style="padding: 5px 0;">${player.background || 'ไม่มีข้อมูล'}</p>
+                        </details>
+                        <div class="player-stats">
+                            <ul>
+                                <li><strong>STR:</strong> ${calculateTotalStat(player, 'STR')}</li>
+                                <li><strong>DEX:</strong> ${calculateTotalStat(player, 'DEX')}</li>
+                                <li><strong>CON:</strong> ${calculateTotalStat(player, 'CON')}</li>
+                                <li><strong>INT:</strong> ${calculateTotalStat(player, 'INT')}</li>
+                                <li><strong>WIS:</strong> ${calculateTotalStat(player, 'WIS')}</li>
+                                <li><strong>CHA:</strong> ${calculateTotalStat(player, 'CHA')}</li>
+                            </ul>
+                        </div>
+                    `;
+                    teamViewContainer.appendChild(card);
+                }
+            }
+
+            if (!foundTeammates) {
+                teamViewContainer.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">ยังไม่มีผู้เล่นอื่นเข้าร่วมห้อง</p>';
+            }
+        });
+    </script>
+</body>
+</html>

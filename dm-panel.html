@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <script src="Javascript/BG.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
+</head>
+<body>
+
+  <h1 style="text-align:center;">DM Panel</h1>
+
+  <div class="grid-container">
+
+    <div class="panel">
+      <a href="lobby.html" style="grid-column: 1 / -1; text-align: center; margin-top: 20px;"><button>กลับล็อบบี้</button></a>
+      <h2>ข้อมูลผู้เล่น</h2>
+      
+      <select id="playerSelect"></select>
+      
+      <div id="playerEditor">
+          
+          <div id="basicInfoSection" style="margin-top: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #f0f0f04f;">
+              <h3>ข้อมูลทั่วไป</h3>
+              <label>ชื่อ:</label><input type="text" id="editName" readonly>
+              <label>เพศ:</label>
+              <select id="editGender">
+                <option value="ชาย">ชาย</option>
+                <option value="หญิง">หญิง</option>
+                <option value="ไม่ระบุ">ไม่ระบุ</option>
+              </select>
+              <label>อายุ:</label><input type="number" id="editAge" min="1" max="120">
+              <label>เผ่าพันธุ์:</label>
+              <select id="editRace">
+                  <option value="มนุษย์">มนุษย์</option>
+                  <option value="เอลฟ์">เอลฟ์</option>
+                  <option value="คนแคระ">คนแคระ</option>
+                  <option value="ฮาล์ฟลิ่ง">ครึ่งสัตว์</option>
+                  <option value="ไทฟลิ่ง">มนุษย์สัตว์</option>
+                  <option value="แวมไพร์">แวมไพร์</option>
+                  <option value="เงือก">เงือก</option>
+                  <option value="ออร์ค">ออร์ค</option>
+                  <option value="โนม">โนม</option>
+                  <option value="เอลฟ์ดำ">ดาร์คเอลฟ์</option>
+                  <option value="นางฟ้า">นางฟ้า</option>
+                  <option value="มาร">มาร</option>
+                  <option value="โกเลม">โกเลม</option>
+                  <option value="อันเดด">อันเดด</option>
+                  <option value="ครึ่งมังกร">ครึ่งมังกร</option>
+                  <option value="มังกร">มังกร</option>
+                  <option value="ครึ่งเทพ">ครึ่งเทพ</option>
+                  <option value="พระเจ้า">พระเจ้า</option>
+              </select>
+              <label>อาชีพ:</label>
+              <select id="editClass">
+                <option value="นักรบ">นักรบ</option>
+                <option value="นักเวท">นักเวท</option>
+                <option value="นักบวช">นักบวช</option>
+                <option value="โจร">โจร</option>
+                <option value="เรนเจอร์">เรนเจอร์</option>
+                <option value="อัศวินศักดิ์สิทธิ์">อัศวินศักดิ์สิทธิ์</option>
+                <option value="บาร์บาเรียน">บาร์บาเรียน</option>
+                <option value="พ่อค้า">พ่อค้า</option>
+                <option value="แทงค์">แทงค์</option>
+                <option value="นักปราชญ์">นักปราชญ์</option>
+                <option value="อัศวิน">อัศวิน</option>
+                <option value="เจ้าเมือง">เจ้าเมือง</option>
+                <option value="นักดาบเวทย์">นักดาบเวทย์</option>
+                <option value="นักบุญหญิง">นักบุญหญิง</option>
+                <option value="นักฆ่า">นักฆ่า</option>
+                <option value="สตรีศักดิ์สิทธิ์">สตรีศักดิ์สิทธิ์</option>
+                <option value="ผู้กล้า">ผู้กล้า</option>
+                <option value="จอมมาร">จอมมาร</option>
+                <option value="เทพเจ้า">เทพเจ้า</option>
+
+              </select>
+              <label>ภูมิหลัง:</label><input type="text" id="editBackground">
+              <hr>
+              <label>พลังชีวิต (HP):</label><input type="number" id="editHp">
+              <button onclick="saveBasicInfo()" style="margin-top: 10px; width: 100%; background-color: #007bff;">💾 บันทึกข้อมูลทั่วไป</button>
+          </div>
+
+          
+
+          <button onclick="deletePlayer()" style="background-color:#cc0000; color:white; margin-top:20px; width: 100%;">🗑️ ลบผู้เล่น</button>
+      </div>
+    </div>
+
+    <div id="playerSummaryPanel" class="panel">
+        <h3>สรุปข้อมูลตัวละคร</h3>
+        <p>โปรดเลือกผู้เล่นเพื่อดูสรุปข้อมูล</p>
+    </div>
+
+    <div class="panel">
+      <h2>⚙️ จัดการเลเวล (ถาวร)</h2>
+      <p>
+          <strong>เลเวลปัจจุบัน:</strong> <span id="editLevel">1</span> |
+          <strong>แต้มอิสระ:</strong> <span id="editFreeStatPoints">0</span>
+      </p>
+      <div style="margin-top: 10px;">
+          <button onclick="changeLevel(1)">⬆️ เพิ่ม 1 เลเวล</button>
+          <button onclick="changeLevel(-1)" style="background-color: #dc3545;">⬇️ ลด 1 เลเวล</button>
+          <h2>🌀 บัฟ/ดีบัฟชั่วคราว (Temp Level)</h2>
+      <label for="tempLevelInput">เลเวลชั่วคราว (เช่น +2 หรือ -1):</label>
+      <input type="number" id="tempLevelInput" value="0">
+      <div style="margin-top: 10px;">
+          <button onclick="applyTempLevel()" style="background-color: #007bff;">✨ ใช้บัฟ/ดีบัฟ</button>
+          <button onclick="clearTempLevel()" style="background-color: #cc0000;">🗑️ รีเซ็ต Temp Level</button>
+
+          <div id="statSection" style="margin-top: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #f0f0f04f;">
+              <h3>สถานะ (Stats)</h3>
+              <table id="statTable" style="width: 100%; text-align: center; border-collapse: collapse; margin-top: 10px; table-layout: fixed;">
+                  <thead>
+                      <tr style="background-color: #00000021;">
+                          <th style="font-size: smaller; padding: 5px; border: 1px solid #ccc;">สถานะ</th>
+                          <th style="font-size: smaller; padding: 5px; border: 1px solid #ccc;">เผ่า</th>
+                          <th style="font-size: smaller; padding: 5px; border: 1px solid #ccc;">อาชีพ</th>
+                          <th style="font-size: smaller; padding: 5px; border: 1px solid #ccc;">พ้อยท์</th>
+                          <th style="font-size: smaller; padding: 5px; border: 1px solid #ccc;">บัฟ/ดีบัฟ</th>
+                          <th style="font-size: smaller; padding: 5px; border: 1px solid #ccc;">รวม</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      <tr>
+                          <td>STR</td>
+                          <td><input type="number" id="editSTRRace" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editSTRClass" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editSTRInvested" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editSTRTemp" style="width: 100%; padding: 2px; background-color: #f87e2c;" oninput="updateStatTotals('STR')"></td>
+                          <td><input type="number" id="editSTRTotal" readonly style="width: 100%; padding: 2px; background-color: #c70700;"></td>
+                      </tr>
+                      <tr>
+                          <td>DEX</td>
+                          <td><input type="number" id="editDEXRace" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editDEXClass" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editDEXInvested" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editDEXTemp" style="width: 100%; padding: 2px; background-color: #f87e2c;" oninput="updateStatTotals('DEX')"></td>
+                          <td><input type="number" id="editDEXTotal" readonly style="width: 100%; padding: 2px; background-color: #c70700;"></td>
+                      </tr>
+                      <tr>
+                          <td>CON</td>
+                          <td><input type="number" id="editCONRace" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editCONClass" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editCONInvested" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editCONTemp" style="width: 100%; padding: 2px; background-color: #f87e2c;" oninput="updateStatTotals('CON')"></td>
+                          <td><input type="number" id="editCONTotal" readonly style="width: 100%; padding: 2px; background-color: #c70700;"></td>
+                      </tr>
+                      <tr>
+                          <td>INT</td>
+                          <td><input type="number" id="editINTRace" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editINTClass" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editINTInvested" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editINTTemp" style="width: 100%; padding: 2px; background-color: #f87e2c;" oninput="updateStatTotals('INT')"></td>
+                          <td><input type="number" id="editINTTotal" readonly style="width: 100%; padding: 2px; background-color: #c70700;"></td>
+                      </tr>
+                      <tr>
+                          <td>WIS</td>
+                          <td><input type="number" id="editWISRace" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editWISClass" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editWISInvested" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editWISTemp" style="width: 100%; padding: 2px; background-color: #f87e2c;" oninput="updateStatTotals('WIS')"></td>
+                          <td><input type="number" id="editWISTotal" readonly style="width: 100%; padding: 2px; background-color: #c70700;"></td>
+                      </tr>
+                      <tr>
+                          <td>CHA</td>
+                          <td><input type="number" id="editCHARace" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editCHAClass" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editCHAInvested" readonly style="width: 100%; padding: 2px;"></td>
+                          <td><input type="number" id="editCHATemp" style="width: 100%; padding: 2px; background-color: #f87e2c;" oninput="updateStatTotals('CHA')"></td>
+                          <td><input type="number" id="editCHATotal" readonly style="width: 100%; padding: 2px; background-color: #c70700;"></td>
+                      </tr>
+                  </tbody>
+              </table>
+              <button onclick="saveStats()" style="margin-top: 10px; width: 100%; background-color: #28a745;">✨ บันทึกสถานะ (บัฟ/ดีบัฟ)</button>
+          </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>จัดการห้อง (Room Controls)</h2>
+      <button onclick="changeRoomPassword()" style="background-color: #5bc0de; width: 100%; margin-bottom: 10px;">🔑 เปลี่ยนรหัสเข้าห้อง</button>
+      <button onclick="changeDMPassword()" style="background-color: #f0ad4e; width: 100%; margin-bottom: 20px;">🔒 เปลี่ยนรหัส DM Panel</button>
+      <hr>
+      <button onclick="deleteRoom()" style="background-color: #dc3545; color: white; width: 100%;">💣 ลบห้องถาวร</button>
+    </div>
+
+    </div>
+    <div class="panel">
+      <h2>เนื้อเรื่องล่าสุด</h2>
+      <textarea id="story" rows="5" placeholder="เขียนเนื้อเรื่องที่ผู้เล่นทุกคนจะเห็น..."></textarea>
+      <button onclick="saveStory()">📝 บันทึกเนื้อเรื่อง</button>
+    </div>
+
+    <div class="panel">
+      <h2>เพิ่มไอเทม</h2>
+      <input type="text" id="itemName" placeholder="ชื่อไอเทม">
+      <input type="number" id="itemQty" value="1" min="1" placeholder="จำนวน">
+      <button onclick="addItem()">🎒 เพิ่มไอเทมให้ผู้เล่น</button>
+      <h3>เพิ่มจำนวนไอเทมที่มีอยู่แล้ว</h3>
+      <select id="existingItemSelect"></select>
+      <input type="number" id="existingItemQty" value="1" min="1" placeholder="จำนวนที่ต้องการเพิ่ม">
+      <button onclick="increaseItemQuantity()">➕ เพิ่มจำนวนไอเทม</button>
+      <h2>ลบไอเทม</h2>
+      <select id="itemSelect"></select>
+      <input type="number" id="removeQty" value="1" min="1" placeholder="จำนวนที่ต้องการลบ">
+      <button onclick="removeItem()">🗑️ ลบไอเทมจากผู้เล่น</button>
+    </div>
+
+    <div class="panel">
+      <h2>เลือกมอนสเตอร์สำเร็จรูป</h2>
+        <select id="monsterTemplateSelect" onchange="loadMonsterTemplate()"></select>
+
+        <label>พลังชีวิต (HP):</label><input type="number" id="monsterHp">
+        <label>พลังโจมตี (STR):</label><input type="number" id="monsterStr">
+        <label>ความคล่องแคล่ว (DEX):</label><input type="number" id="monsterDex">
+        <label>ความทนทาน(CON):</label><input type="number" id="monsterCon">
+        <label>สติปัญญา (INT):</label><input type="number" id="monsterInt">
+        <label>จิตใจ (WIS):</label><input type="number" id="monsterWis">
+        <label>เสน่ห์ (CHA):</label><input type="number" id="monsterCha">
+
+        <button onclick="sendMonster()">🧟‍♂️ ส่งมอนสเตอร์ให้ผู้เล่น</button>
+        
+        <hr> 
+        <button onclick="clearEnemy()" style="background-color: #dc3545; width: 100%; margin-top: 10px;">
+          ✅ กำจัดศัตรูสำเร็จ / ลบศัตรู
+        </button>
+    </div>
+    <div class="panel">
+      <h2>สร้างคู่ต่อสู้เอง</h2>
+      <input type="text" id="customEnemyName" placeholder="ชื่อคู่ต่อสู้">
+      <label>พลังชีวิต (HP):</label><input type="number" id="customEnemyHp">
+      <label>พลังโจมตี (STR):</label><input type="number" id="customEnemyStr">
+      <label>ความคล่องแคล่ว (DEX):</label><input type="number" id="customEnemyDex">
+      <label>ความทนทาน (CON):</label><input type="number" id="customEnemyCon">
+      <label>สติปัญญา (INT):</label><input type="number" id="customEnemyInt">
+      <label>จิตใจ (WIS):</label><input type="number" id="customEnemyWis">
+      <label>เสน่ห์ (CHA):</label><input type="number" id="customEnemyCha">
+      <button onclick="addCustomEnemy()">🧟‍♂️ เพิ่มคู่ต่อสู้ที่สร้างเอง</button>
+    </div>
+    <div class="panel">
+      <h2>ส่งเควส</h2>
+      <input type="text" id="questTitle" placeholder="ชื่อเควส">
+      <textarea id="questDetail" rows="3" placeholder="รายละเอียดเควส"></textarea>
+      <input type="text" id="questReward" placeholder="รางวัลที่ผู้เล่นจะได้รับ">
+      <button onclick="sendQuest()">📜 ส่งเควสให้ผู้เล่น</button>
+
+      <hr style="border-top: 1px solid rgba(255, 140, 0, 0.2); margin: 15px 0;">
+
+      <button onclick="completeQuest()" style="background-color: #28a745; margin-top: 10px;">
+        🏆 ยืนยันเควสสำเร็จ / ลบเควส
+      </button>
+    </div>
+
+    <div class="panel">
+      <h2>DM ทอยเต๋า</h2>
+      <label for="dmDiceType">ชนิดเต๋า:</label>
+      <select id="dmDiceType">
+        <option value="4">d4</option>
+        <option value="6">d6</option>
+        <option value="8">d8</option>
+        <option value="10">d10</option>
+        <option value="12">d12</option>
+        <option value="20" selected>d20</option>
+        <option value="100">d100</option>
+      </select>
+
+      <label for="dmDiceCount">จำนวนลูก:</label>
+      <input type="number" id="dmDiceCount" value="1" min="1" max="10">
+
+      <button onclick="rollDmDice()">🎲 DM ทอย!</button>
+      <div class="dice-animation-area" id="dm-dice-animation-area"></div>
+      <div class="dice-result-text" id="dmDiceResult"></div>
+    </div>
+
+    <div class="panel">
+    <h2>ผลการทอยของผู้เล่น</h2>
+    <ul id="playerDiceLog">
+        <li>ยังไม่มีข้อมูลการทอย</li>
+    </ul>
+        <button onclick="clearDiceLogs()" style="background-color:#cc0000; color:white; margin-top:10px;">
+            🧹 ล้างประวัติการทอยทั้งหมด
+        </button>
+    </div>
+  </div>
+    
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="Javascript/firebase-init.js"></script>
+  <script src="Javascript/dice-roller.js"></script>
+  <script src="Javascript/dm-panel-script.js"></script>
+</body>
+</html>

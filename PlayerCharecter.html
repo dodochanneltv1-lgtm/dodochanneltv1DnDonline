@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale-1.0">
+    <title>Player Character Creation</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <style>
+        /* [ใหม่] สไตล์สำหรับหน้าสร้างตัวละคร */
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: transparent;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .form-container {
+            width: 100%;
+            max-width: 500px;
+            padding: 30px 40px;
+            background-color: rgba(10, 10, 10, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .form-title {
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            font-weight: bold;
+            text-align: center;
+            background: linear-gradient(90deg, #ff8a00, #e52e71);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent !important;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        label {
+            display: block;
+            margin-top: 20px;
+            margin-bottom: 5px;
+            font-weight: bold;
+            /* 🟢 แก้ไข: ใช้สีขาว (#fff) แทนสีดำ (#000000) */
+            color: #fff;
+            text-align: left;
+            /* 🟢 เพิ่มเงาเพื่อให้ข้อความโดดเด่น */
+            text-shadow: 1px 1px 2px #000; 
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 12px;
+            font-size: 1em;
+            background-color: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            color: #fff;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #ff8a00;
+            box-shadow: 0 0 15px rgba(255, 138, 0, 0.3);
+        }
+
+        /* สำหรับลูกศรของ dropdown */
+        select {
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23FFFFFF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+            background-repeat: no-repeat;
+            background-position: right 15px top 50%;
+            background-size: .65em auto;
+            padding-right: 40px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 40px;
+        }
+
+        .form-button {
+            flex: 1; /* ทำให้ปุ่มแบ่งพื้นที่เท่ากัน */
+            padding: 15px;
+            font-size: 1.1em;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .primary {
+            background: linear-gradient(90deg, #ff8a00, #e52e71);
+            color: white;
+        }
+        .primary:hover {
+            box-shadow: 0 0 20px rgba(229, 46, 113, 0.6);
+            transform: translateY(-2px);
+        }
+
+        .secondary {
+            background-color: transparent;
+            color: #ccc;
+            border: 1px solid #555;
+        }
+        .secondary:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border-color: #777;
+        }
+    </style>
+</head>
+<body>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <div class="form-container">
+        <h1 class="form-title">สร้างตัวละคร DnD</h1>
+
+        <label for="name">ชื่อ:</label>
+        <input type="text" id="name">
+
+        <label for="gender">เพศ:</label>
+        <select id="gender">
+            <option value="ชาย">ชาย</option>
+            <option value="หญิง">หญิง</option>
+            <option value="ไม่ระบุ">ไม่ระบุ</option>
+        </select>
+
+        <label for="age">อายุ:</label>
+        <input type="number" id="age" min="1" max="9999999999">
+
+        <label for="race">เผ่า:</label>
+        <select id="race">
+            <option value="มนุษย์">มนุษย์</option>
+            <option value="เอลฟ์">เอลฟ์</option>
+            <option value="คนแคระ">คนแคระ</option>
+            <option value="ฮาล์ฟลิ่ง">ครึ่งสัตว์</option> 
+            <option value="ไทฟลิ่ง">มนุษย์สัตว์</option>
+            <option value="แวมไพร์">แวมไพร์</option>
+            <option value="เงือก">เงือก</option>
+            <option value="ออร์ค">ออร์ค</option>
+            <option value="โนม">โนม</option>
+            <option value="เอลฟ์ดำ">ดาร์คเอลฟ์</option>
+            <option value="นางฟ้า">นางฟ้า</option>
+            <option value="มาร">มาร</option>
+            <option value="โกเลม">โกเลม</option>
+            <option value="อันเดด">อันเดด</option>
+            <option value="ครึ่งมังกร">ครึ่งมังกร</option>
+            <option value="มังกร" hidden>มังกร</option>
+            <option value="ครึ่งเทพ" hidden>ครึ่งเทพ</option>
+            <option value="พระเจ้า" hidden>พระเจ้า</option>
+
+        </select>
+
+        <label for="class">อาชีพ:</label>
+        <select id="class">
+            <option value="นักรบ">นักรบ</option>
+            <option value="นักเวท">นักเวท</option>
+            <option value="นักบวช">นักบวช</option>
+            <option value="โจร">โจร</option>
+            <option value="เรนเจอร์">เรนเจอร์</option>
+            <option value="บาร์บาเรียน">บาร์บาเรียน</option>
+            <option value="พ่อค้า">พ่อค้า</option>
+            <option value="แทงค์">แทงค์</option>
+            <option value="นักปราชญ์" hidden>นักปราชญ์</option>
+            <option value="นักเล่นแร่แปรธาตุ" hidden>นักเล่นแร่แปรธาตุ</option> 
+            <option value="อัศวิน" hidden>อัศวิน</option>
+            <option value="เจ้าเมือง" hidden>เจ้าเมือง</option>
+            <option value="อัศวินศักดิ์สิทธิ์" hidden>อัศวินศักดิ์สิทธิ์</option>
+            <option value="นักดาบเวทย์" hidden>นักดาบเวทย์</option>
+            <option value="นักบุญหญิง" hidden>นักบุญหญิง</option>
+            <option value="นักฆ่า" hidden>นักฆ่า</option>
+            <option value="สตรีศักดิ์สิทธิ์" hidden>สตรีศักดิ์สิทธิ์</option>
+        </select>
+
+        <label for="background">ภูมิหลัง:</label>
+        <input type="text" id="background" placeholder="เช่น ลูกชาวนา, อดีตทหาร">
+
+        <label for="alignment">แนวทางจริยธรรม:</label>
+        <select id="alignment">
+            <option value="ดีแท้">ดีแท้</option>
+            <option value="ดีมีเหตุผล">ดีมีเหตุผล</option>
+            <option value="เป็นกลาง">เป็นกลาง</option>
+            <option value="ชั่วมีเหตุผล">ชั่วมีเหตุผล</option>
+            <option value="ชั่วแท้">ชั่วแท้</option>
+        </select>
+
+        <div class="button-group">
+            <button class="form-button secondary" onclick="location.href='main.html'">ย้อนกลับ</button>
+            <button class="form-button primary" onclick="createCharacter()">สร้างตัวละคร</button>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="Javascript/firebase-init.js"></script>
+    <script src="Javascript/charector.js"></script>
+</body>
+</html>
