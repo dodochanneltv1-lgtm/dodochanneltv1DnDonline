@@ -6,6 +6,31 @@
     <link rel="stylesheet" href="style.css">
     <script src="Javascript/BG.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
+    <style>
+      /* Dice Result */
+      #dice-result {
+        font-size: 24px;
+        text-align: center;
+        color: #ffeb8a;
+        text-shadow: 0 0 8px #ff4500;
+        margin-top: 15px;
+      }
+
+      #dm-dice-animation-area {
+        display: flex; /* ใช้ Flexbox เพื่อจัดกึ่งกลาง */
+        justify-content: center; /* กึ่งกลางในแนวนอน */
+        align-items: center; /* กึ่งกลางในแนวตั้ง */
+        height: 80px; /* กำหนดความสูงที่เหมาะสมเพื่อให้เห็นการจัดกึ่งกลางแนวตั้ง */
+        margin: 10px 0;
+      }
+      
+      /* [เพิ่ม] สไตล์สำหรับตัวลูกเต๋าเอง (เลข 6 ในภาพ) */
+      #dm-dice-animation-area > div {
+          /* ทำให้ลูกเต๋าที่ถูกสร้างขึ้น (div ที่มีเลข 6) มีขนาดคงที่ */
+          width: 60px;
+          height: 60px;
+      }
+    </style>
 </head>
 <body>
 
@@ -293,3 +318,4 @@
 </body>
 
 </html>
+
