@@ -126,7 +126,7 @@ function promptRoleSelection(roomId, roomData) {
         if (result.isConfirmed) {
             // เลือกเป็น ผู้เล่น
             sessionStorage.setItem('roomId', roomId);
-            window.location.href = 'main.html';
+            window.location.href = 'player-dashboard.html';
         } else if (result.isDenied) {
             // เลือกเป็น DM Panel - ต้องยืนยันรหัส DM
             promptDmConfirmation(roomId, roomData);
@@ -192,4 +192,5 @@ function loadPublicRooms() {
         }
     });
 }
+
 
