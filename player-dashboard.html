@@ -96,7 +96,7 @@
         box-shadow: 0 0 20px rgba(255,255,255,0.6);
       }
 
-      /* ส่วนเลือกตัวละคร */
+      /* ส่วนเลือกตัวละคร - สไตล์นี้จะไม่ถูกใช้แล้วเพราะลบออก */
       #characterInfoPanel select {
         background: rgba(30, 30, 30, 0.8);
         color: #ffe4b5;
@@ -127,6 +127,21 @@
         margin-top: 15px;
       }
 
+      #player-dice-animation-area {
+        display: flex; /* ใช้ Flexbox เพื่อจัดกึ่งกลาง */
+        justify-content: center; /* กึ่งกลางในแนวนอน */
+        align-items: center; /* กึ่งกลางในแนวตั้ง */
+        height: 80px; /* กำหนดความสูงที่เหมาะสมเพื่อให้เห็นการจัดกึ่งกลางแนวตั้ง */
+        margin: 10px 0;
+      }
+      
+      /* [เพิ่ม] สไตล์สำหรับตัวลูกเต๋าเอง (เลข 6 ในภาพ) */
+      #player-dice-animation-area > div {
+          /* ทำให้ลูกเต๋าที่ถูกสร้างขึ้น (div ที่มีเลข 6) มีขนาดคงที่ */
+          width: 60px;
+          height: 60px;
+      }
+
       /* เอฟเฟกต์ไฟลุกเบาๆ */
       @keyframes fire-glow {
         0% { box-shadow: 0 0 10px #ff4500; }
@@ -154,31 +169,26 @@
     <div class="grid-container">
     
     <div class="panel" id="characterInfoPanel">
-    <h2>ข้อมูลตัวละคร</h2>
-      <div style="padding: 20px; text-align: center; background-color: #e6f0ff; border-bottom: 1px solid #ccc;">
-      <label for="characterSelect"><strong>เลือกตัวละคร:</strong></label>
-      <select id="characterSelect" onchange="switchCharacter()" style="margin-left: 10px; padding: 5px; font-size: 16px;"></select>
-      </div>
-
-    <p><strong>ชื่อ:</strong> <span id="name"></span></p>
-    <p><strong>เผ่าพันธุ์:</strong> <span id="race"></span></p>
-    <p><strong>อายุ:</strong> <span id="age"></span></p>
-    <p><strong>เพศ:</strong> <span id="gender"></span></p>
-    <p><strong>อาชีพ:</strong> <span id="class"></span></p>
-    <details>
-        <summary><strong>ภูมิหลัง (คลิกเพื่อดู)</strong></summary>
-        <p id="background" style="margin-top: 5px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px;"></p>
-    </details>
-          <p><strong>เลเวล:</strong> <span id="level"></span></p> 
-    <p><strong>พลังชีวิต:</strong> <span id="hp"></span></p>
-    <ul>
-    <li>พลังโจมตี (STR): <span id="str"></span></li>
-    <li>ความคล่องแคล่ว (DEX): <span id="dex"></span></li>
-    <li>ความทนทาน (CON): <span id="con"></span></li>
-    <li>สติปัญญา (INT): <span id="int"></span></li>
-    <li>จิตใจ (WIS): <span id="wis"></span></li>
-    <li>เสน่ห์ (CHA): <span id="cha"></span></li>
-    </ul>
+      <h2>ข้อมูลตัวละคร</h2>
+      <p><strong>ชื่อ:</strong> <span id="name"></span></p>
+      <p><strong>เผ่าพันธุ์:</strong> <span id="race"></span></p>
+      <p><strong>อายุ:</strong> <span id="age"></span></p>
+      <p><strong>เพศ:</strong> <span id="gender"></span></p>
+      <p><strong>อาชีพ:</strong> <span id="class"></span></p>
+      <details>
+          <summary><strong>ภูมิหลัง (คลิกเพื่อดู)</strong></summary>
+          <p id="background" style="margin-top: 5px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px;"></p>
+      </details>
+            <p><strong>เลเวล:</strong> <span id="level"></span></p> 
+      <p><strong>พลังชีวิต:</strong> <span id="hp"></span></p>
+      <ul>
+      <li>พลังโจมตี (STR): <span id="str"></span></li>
+      <li>ความคล่องแคล่ว (DEX): <span id="dex"></span></li>
+      <li>ความทนทาน (CON): <span id="con"></span></li>
+      <li>สติปัญญา (INT): <span id="int"></span></li>
+      <li>จิตใจ (WIS): <span id="wis"></span></li>
+      <li>เสน่ห์ (CHA): <span id="cha"></span></li>
+      </ul>
     </div>
 
     <div class="panel">
@@ -257,5 +267,4 @@
       <script src="Javascript/dice-roller.js"></script>
       <script src="Javascript/player-dashboard-script.js"></script>
 </body>
-
 </html>
