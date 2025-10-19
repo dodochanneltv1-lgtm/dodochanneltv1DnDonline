@@ -113,6 +113,11 @@ function joinRoomSelection() {
 }
 
 function promptRoleSelection(roomId, roomData) {
+    const user = firebase.auth().currentUser; // ดึงผู้ใช้ปัจจุบัน
+    if (!user) {
+        Swal.fire('ข้อผิดพลาด', 'ไม่พบข้อมูลผู้ใช้!', 'error');
+        return;
+    }
     Swal.fire({
         title: 'เลือกบทบาท',
         text: `คุณต้องการเข้าห้อง ${roomData.name} เป็นอะไร?`,
@@ -126,6 +131,7 @@ function promptRoleSelection(roomId, roomData) {
         if (result.isConfirmed) {
             // เลือกเป็น ผู้เล่น
             sessionStorage.setItem('roomId', roomId);
+            localStorage.setItem('currentUserUid', user.uid);
             window.location.href = 'player-dashboard.html';
         } else if (result.isDenied) {
             // เลือกเป็น DM Panel - ต้องยืนยันรหัส DM
@@ -192,5 +198,3 @@ function loadPublicRooms() {
         }
     });
 }
-
-
