@@ -9,6 +9,53 @@
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Prompt:wght@400;600&display=swap');
 
+      /* --- [NEW] โค้ด Style สำหรับการ์ดแสดงผล --- */
+      .result-card {
+        background: rgba(0, 0, 0, 0.85);
+        border: 2px solid #a97125;
+        border-radius: 10px;
+        padding: 15px;
+        margin-top: 15px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        transition: all 0.5s ease;
+        opacity: 1;
+      }
+      .result-card.hidden {
+        opacity: 0;
+        transform: translateY(20px);
+        pointer-events: none;
+      }
+      .result-card h4 {
+        margin: 0 0 10px 0;
+        padding-bottom: 5px;
+        color: #ffc107;
+        text-align: center;
+        border-bottom: 1px solid #a97125;
+      }
+      .result-card p {
+        margin: 5px 0;
+        font-family: 'Prompt', sans-serif;
+      }
+      .result-card .outcome {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #a97125;
+        font-weight: bold;
+        font-size: 1.2em;
+        text-align: center;
+      }
+      .result-card.miss {
+        border-color: #dc3545;
+        box-shadow: 0 0 15px #dc3545;
+      }
+      .result-card.miss .outcome { color: #ff4d4d; }
+      .result-card.hit {
+        border-color: #28a745;
+        box-shadow: 0 0 15px #28a745;
+      }
+      .result-card.hit .outcome { color: #00ff00; }
+      /* --- สิ้นสุดส่วน Style ใหม่ --- */
+
       body {
         font-family: 'Cinzel', serif;
         margin: 0;
@@ -21,28 +68,20 @@
         text-shadow: 1px 1px 3px #000;
       }
 
-      /* โครงร่างหลัก */
       .grid-container {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
         gap: 20px;
       }
 
-      /* กล่องข้อมูล */
       .panel {
         background: rgba(10, 0, 0, 0.75);
         border: 1px solid rgba(255, 140, 0, 0.5);
         border-radius: 12px;
         padding: 20px;
         box-shadow: 0 0 15px rgba(255, 69, 0, 0.4);
-        transition: transform 0.3s, box-shadow 0.3s;
-      }
-      .panel:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 0 25px rgba(255, 100, 0, 0.8);
       }
 
-      /* หัวข้อ */
       h2 {
         text-align: center;
         color: #ffa500;
@@ -52,7 +91,6 @@
         text-shadow: 0 0 8px #ff4500;
       }
 
-      /* ตัวอักษรและลิสต์ */
       p, li, label, strong {
         color: #fff5cc;
         font-family: 'Prompt', sans-serif;
@@ -65,7 +103,6 @@
         margin: 0;
       }
 
-      /* ปุ่ม */
       button {
         width: 100%;
         margin-top: 10px;
@@ -85,42 +122,9 @@
         transform: scale(1.05);
         box-shadow: 0 0 20px rgba(255, 165, 0, 0.9);
       }
-
-      /* ปุ่มรีเฟรช */
-      .refresh-btn {
-        background: linear-gradient(90deg, #444, #777);
-        box-shadow: 0 0 10px rgba(255,255,255,0.3);
-      }
-      .refresh-btn:hover {
-        background: linear-gradient(90deg, #777, #bbb);
-        box-shadow: 0 0 20px rgba(255,255,255,0.6);
-      }
-
-      /* ส่วนเลือกตัวละคร - สไตล์นี้จะไม่ถูกใช้แล้วเพราะลบออก */
-      #characterInfoPanel select {
-        background: rgba(30, 30, 30, 0.8);
-        color: #ffe4b5;
-        border: 1px solid rgba(255, 140, 0, 0.5);
-        padding: 8px;
-        border-radius: 6px;
-        box-shadow: inset 0 0 6px rgba(255, 69, 0, 0.3);
-      }
-      #characterInfoPanel select:focus {
-        border-color: #ffae00;
-        box-shadow: 0 0 10px #ffae00;
-      }
-
-      /* พื้นหลังช่องข้อมูล */
-      #characterInfoPanel div {
-        background-color: rgba(40, 20, 0, 0.7);
-        border: 1px solid rgba(255, 140, 0, 0.4);
-        border-radius: 6px;
-        padding: 10px;
-      }
-
-      /* Dice Result */
-      #dice-result {
-        font-size: 24px;
+      
+      #dice-result, #attackRollResult, #damageRollResult {
+        font-size: 1.1em;
         text-align: center;
         color: #ffeb8a;
         text-shadow: 0 0 8px #ff4500;
@@ -128,141 +132,142 @@
       }
 
       #player-dice-animation-area {
-        display: flex; /* ใช้ Flexbox เพื่อจัดกึ่งกลาง */
-        justify-content: center; /* กึ่งกลางในแนวนอน */
-        align-items: center; /* กึ่งกลางในแนวตั้ง */
-        height: 80px; /* กำหนดความสูงที่เหมาะสมเพื่อให้เห็นการจัดกึ่งกลางแนวตั้ง */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 80px;
         margin: 10px 0;
       }
-      
-      /* [เพิ่ม] สไตล์สำหรับตัวลูกเต๋าเอง (เลข 6 ในภาพ) */
       #player-dice-animation-area > div {
-          /* ทำให้ลูกเต๋าที่ถูกสร้างขึ้น (div ที่มีเลข 6) มีขนาดคงที่ */
           width: 60px;
           height: 60px;
       }
 
-      /* เอฟเฟกต์ไฟลุกเบาๆ */
-      @keyframes fire-glow {
-        0% { box-shadow: 0 0 10px #ff4500; }
-        50% { box-shadow: 0 0 25px #ff8c00; }
-        100% { box-shadow: 0 0 10px #ff4500; }
-      }
-      .panel:hover {
-        animation: fire-glow 1.5s infinite alternate;
-      }
-
-      /* Responsive */
       @media (max-width: 768px) {
-        body {
-          padding: 10px;
-        }
-        .grid-container {
-          grid-template-columns: 1fr;
-        }
+        body { padding: 10px; }
+        .grid-container { grid-template-columns: 1fr; }
       }
+      #turnIndicator { text-align: center; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-weight: bold; }
+        #turnIndicator.my-turn { background-color: #28a745; color: white; text-shadow: 1px 1px 2px black; }
+        #turnIndicator.other-turn { background-color: #333; color: #aaa; }
     </style>
-
-    </head>
-    <body>
-
+</head>
+<body>
     <div class="grid-container">
     
-    <div class="panel" id="characterInfoPanel">
-      <h2>ข้อมูลตัวละคร</h2>
-      <p><strong>ชื่อ:</strong> <span id="name"></span></p>
-      <p><strong>เผ่าพันธุ์:</strong> <span id="race"></span></p>
-      <p><strong>อายุ:</strong> <span id="age"></span></p>
-      <p><strong>เพศ:</strong> <span id="gender"></span></p>
-      <p><strong>อาชีพ:</strong> <span id="class"></span></p>
-      <details>
-          <summary><strong>ภูมิหลัง (คลิกเพื่อดู)</strong></summary>
-          <p id="background" style="margin-top: 5px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px;"></p>
-      </details>
+        <div class="panel" id="characterInfoPanel">
+            <h2>ข้อมูลตัวละคร</h2>
+            <p><strong>ชื่อ:</strong> <span id="name"></span></p>
+            <p><strong>เผ่าพันธุ์:</strong> <span id="race"></span></p>
+            <p><strong>อายุ:</strong> <span id="age"></span></p>
+            <p><strong>เพศ:</strong> <span id="gender"></span></p>
+            <p><strong>อาชีพ:</strong> <span id="class"></span></p>
+            <details>
+                <summary><strong>ภูมิหลัง (คลิกเพื่อดู)</strong></summary>
+                <p id="background" style="margin-top: 5px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px;"></p>
+            </details>
             <p><strong>เลเวล:</strong> <span id="level"></span></p> 
-      <p><strong>พลังชีวิต:</strong> <span id="hp"></span></p>
-      <ul>
-      <li>พลังโจมตี (STR): <span id="str"></span></li>
-      <li>ความคล่องแคล่ว (DEX): <span id="dex"></span></li>
-      <li>ความทนทาน (CON): <span id="con"></span></li>
-      <li>สติปัญญา (INT): <span id="int"></span></li>
-      <li>จิตใจ (WIS): <span id="wis"></span></li>
-      <li>เสน่ห์ (CHA): <span id="cha"></span></li>
-      </ul>
-    </div>
+            <p><strong>พลังชีวิต:</strong> <span id="hp"></span></p>
+            <ul>
+                <li>พลังโจมตี (STR): <span id="str"></span></li>
+                <li>ความคล่องแคล่ว (DEX): <span id="dex"></span></li>
+                <li>ความทนทาน (CON): <span id="con"></span></li>
+                <li>สติปัญญา (INT): <span id="int"></span></li>
+                <li>จิตใจ (WIS): <span id="wis"></span></li>
+                <li>เสน่ห์ (CHA): <span id="cha"></span></li>
+            </ul>
+        </div>
 
-    <div class="panel">
-    <h2>ทอยเต๋า</h2>
-    <label for="diceType">ชนิดเต๋า:</label>
-    <select id="diceType">
-    <option value="4">d4</option>
-    <option value="6">d6</option>
-    <option value="8">d8</option>
-    <option value="10">d10</option>
-    <option value="12">d12</option>
-    <option value="20" selected>d20</option>
-    <option value="100">d100</option>
-    </select>
+        <div class="panel">
+            <h2>ควบคุมและทอยเต๋า</h2>
+            <label for="diceType">ชนิดเต๋า:</label>
+            <select id="diceType">
+                <option value="4">d4</option>
+                <option value="6">d6</option>
+                <option value="8">d8</option>
+                <option value="10">d10</option>
+                <option value="12">d12</option>
+                <option value="20" selected>d20</option>
+                <option value="100">d100</option>
+            </select>
+            <label for="diceCount">จำนวนลูก:</label>
+            <input type="number" id="diceCount" value="1" min="1" max="10">
+            <button onclick="playerRollDice()">ทอยเต๋า (ทั่วไป)</button>
+            <div id="player-dice-animation-area"></div>
+            <div id="dice-result"></div>
 
-    <label for="diceCount">จำนวนลูก:</label>
-    <input type="number" id="diceCount" value="1" min="1" max="10">
+            <button id="goToStatsButton" onclick="location.href='stat-assignment.html'" style="display:none; background-color: #ffc107; color: black; margin-top: 15px;">
+                อัปเกรดสถานะ
+            </button>
+            <a href="lobby.html"><button style="background-color: #6c757d;">กลับล็อบบี้</button></a>
+        </div>
 
-    <button onclick="playerRollDice()">ทอย!</button>
-    <div class="dice-animation-area" id="player-dice-animation-area"></div>
-    <div class="dice-result-text" id="dice-result"></div>
+        <div class="panel" id="combatPanel" style="border-color: #dc3545;">
+            <h2>⚔️ การต่อสู้ ⚔️</h2>
+            <div id="turnIndicator" class="hidden"></div>
+            
+            <label for="enemyTargetSelect"><strong>เลือกเป้าหมาย:</strong></label>
+            <select id="enemyTargetSelect" style="width: 100%; margin-bottom: 10px;"></select>
+            
+            <button id="attackRollButton" onclick="performAttackRoll()">1. ทอยเต๋าโจมตี (d20)</button>
+            
+            <div id="damageRollSection" style="display:none; margin-top:15px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                <p style="color:#28a745;">โจมตีโดน! ทอยเต๋าสำหรับความเสียหาย:</p>
+                <p><strong>อาวุธ:</strong> <span id="damageWeaponName">-</span> (<span id="damageDiceInfo"></span>)</p>
+                <button id="damageRollButton" onclick="performDamageRoll()">2. ทอยเต๋าสร้างความเสียหาย</button>
+            </div>
 
-    <button id="goToStatsButton" onclick="location.href='stat-assignment.html'" style="display:none; background-color: #ffc107; color: black; margin-top: 15px;">
-        อัปเกรดสถานะ
-    </button>
-    <div id="dice-result"></div>
+            <div id="rollResultCard" class="result-card hidden">
+                </div>
+        </div>
 
-    <button onclick="location.href='team-view.html'" style="background-color: #007bff; color: white; margin-top: 15px;">
-        🧑‍🤝‍🧑 ดูข้อมูลเพื่อนร่วมทีม
-    </button>
+        <div class="panel">
+            <h2>🎒 กระเป๋า</h2>
+            <ul id="inventory">
+                <li>ยังไม่มีไอเทม</li>
+            </ul>
+        </div>
+        
+        <div class="panel">
+            <h2>🛡️ อุปกรณ์สวมใส่</h2>
+            <ul id="equippedItemsList">
+                <li><strong>อาวุธหลัก:</strong> <span id="eq-mainHand">-</span> <button onclick="unequipItem('mainHand')" style="display:none; width:auto; padding: 2px 8px; font-size:0.8em; background-color:#dc3545;">ถอด</button></li>
+                <li><strong>อาวุธรอง:</strong> <span id="eq-offHand">-</span> <button onclick="unequipItem('offHand')" style="display:none; width:auto; padding: 2px 8px; font-size:0.8em; background-color:#dc3545;">ถอด</button></li>
+                <li><strong>หัว:</strong> <span id="eq-head">-</span> <button onclick="unequipItem('head')" style="display:none; width:auto; padding: 2px 8px; font-size:0.8em; background-color:#dc3545;">ถอด</button></li>
+                <li><strong>ลำตัว:</strong> <span id="eq-chest">-</span> <button onclick="unequipItem('chest')" style="display:none; width:auto; padding: 2px 8px; font-size:0.8em; background-color:#dc3545;">ถอด</button></li>
+                <li><strong>ขา:</strong> <span id="eq-legs">-</span> <button onclick="unequipItem('legs')" style="display:none; width:auto; padding: 2px 8px; font-size:0.8em; background-color:#dc3545;">ถอด</button></li>
+                <li><strong>เท้า:</strong> <span id="eq-feet">-</span> <button onclick="unequipItem('feet')" style="display:none; width:auto; padding: 2px 8px; font-size:0.8em; background-color:#dc3545;">ถอด</button></li>
+            </ul>
+        </div>
 
-    <button onclick="location.href='rules-guide.html'" style="background-color: #5cb85c; color: white; margin-top: 10px;">
-        📜 คู่มือกฎกติกา D&D
-    </button>
+        <div class="panel">
+            <h2>👥 เพื่อนร่วมทีม</h2>
+            <select id="teammateSelect" onchange="showTeammateInfo()">
+                <option value="">-- เลือกดูข้อมูล --</option>
+            </select>
+            <div id="teammateInfo" style="margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 5px;">
+                <p>เลือกเพื่อนร่วมทีมเพื่อดูข้อมูล</p>
+            </div>
+        </div>
 
-    <button class="refresh-btn" onclick="loadData()">🔄 รีเฟรชข้อมูลจาก DM</button>
-    <a href="lobby.html"><button>กลับล็อบบี้</button></a>
-    </div>
+        <div class="panel">
+            <h2>คู่ต่อสู้</h2>
+            <div id="enemyPanelContainer">
+                <p><em>ไม่มีศัตรูที่กำลังต่อสู้กับคุณ</em></p>
+            </div>
+        </div>
 
-    <div class="panel">
-    <h2>เนื้อเรื่องล่าสุด</h2>
-    <p id="story">ยังไม่มีเนื้อเรื่อง</p>
-    </div>
+        <div class="panel" id="questPanel">
+            <h2>เควสที่ได้รับ</h2>
+            <p><strong>ชื่อเควส:</strong> <span id="questTitle">-</span></p>
+            <p><strong>รายละเอียด:</strong> <span id="questDetail">-</span></p>
+            <p><strong>รางวัล:</strong> <span id="questReward">-</span></p> 
+        </div>
 
-    <div class="panel">
-    <h2>🎒 กระเป๋า</h2>
-    <ul id="inventory">
-    <li>ยังไม่มีไอเทม</li>
-    </ul>
-    </div>
-
-    <div class="panel">
-    <h2>คู่ต่อสู้</h2>
-    <div id="enemyPanel">
-    <p><strong>ชื่อ:</strong> <span id="enemyName">-</span></p>
-    <p><strong>พลังชีวิต (HP):</strong> <span id="enemyHp">-</span></p>
-    <ul>
-      <li>พลังโจมตี (STR): <span id="enemyStr">-</span></li>
-      <li>ความคล่องแคล่ว (DEX): <span id="enemyDex">-</span></li>
-      <li>ความทนทาน (CON): <span id="enemyCon">-</span></li>
-      <li>สติปัญญา (INT) <span id="enemyInt">-</span></li>
-      <li>จิตใจ (WIS): <span id="enemyWis">-</span></li>
-      <li>เสน่ห์ (CHA): <span id="enemyCha">-</span></li>
-    </ul>
-</div>
-    </div>
-
-    <div class="panel" id="questPanel">
-      <h2>เควสที่ได้รับ</h2>
-      <p><strong>ชื่อเควส:</strong> <span id="questTitle">-</span></p>
-      <p><strong>รายละเอียด:</strong> <span id="questDetail">-</span></p>
-      <p><strong>รางวัล:</strong> <span id="questReward">-</span></p> 
-    </div>
-
+        <div class="panel">
+            <h2>เนื้อเรื่องล่าสุด</h2>
+            <p id="story">ยังไม่มีเนื้อเรื่อง</p>
+        </div>
     </div>
       <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
       <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
