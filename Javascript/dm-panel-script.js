@@ -136,17 +136,56 @@ function displayPlayerSummary(player) {
     const debuffColor = '#ff4d4d';
     const shadowStyle = 'text-shadow: 1px 1px 3px #000, -1px -1px 3px #000;';
 
+    // 1. คำนวณ MaxHP ล่าสุดก่อน
+    const maxHpNew = calculateHP(player.race, player.class, calculateTotalStat(player, 'CON'));
+    let currentHp = player.hp;
+    
+    let maxHpOld = maxHpNew;
+    let shouldUpdateHp = false;
+
+    // 2. ตรวจสอบและปรับ HP ปัจจุบัน (เพื่อให้ HP เพิ่มตาม MaxHP หาก HP เดิมเต็ม)
+    if (previousPlayerState && previousPlayerState.name === player.name) {
+        maxHpOld = previousPlayerState.MaxHP;
+        // หาก HP เก่าเต็ม (HP เก่า = MaxHP เก่า) และ MaxHP ใหม่สูงกว่า
+        if (previousPlayerState.HP === maxHpOld && maxHpNew > maxHpOld) {
+            currentHp = maxHpNew; // ทำให้ HP ตาม MaxHP ใหม่
+            shouldUpdateHp = true;
+        }
+    }
+
+    // 3. ป้องกัน HP เกิน MaxHP (ในกรณีที่ลด MaxHP ลง)
+    if (currentHp > maxHpNew) {
+        currentHp = maxHpNew; 
+        shouldUpdateHp = true;
+    }
+    
     const currentStats = {
         Level: player.level || 1, TempLevel: player.tempLevel || 0,
-        HP: player.hp, MaxHP: calculateHP(player.race, player.class, calculateTotalStat(player, 'CON')),
+        HP: currentHp, // ใช้ currentHp ที่ปรับแล้ว
+        MaxHP: maxHpNew,
         STR: calculateTotalStat(player, 'STR'), DEX: calculateTotalStat(player, 'DEX'),
         CON: calculateTotalStat(player, 'CON'), INT: calculateTotalStat(player, 'INT'),
         WIS: calculateTotalStat(player, 'WIS'), CHA: calculateTotalStat(player, 'CHA'),
     };
+    
+    // 4. หากมีการปรับ HP ใน currentStats ให้แสดงใน UI Editor ทันที และบันทึกกลับไปยัง Firebase
+    if (shouldUpdateHp) {
+        document.getElementById("editHp").value = currentHp; 
+        
+        const roomId = sessionStorage.getItem('roomId');
+        const uid = getUidByName(player.name);
+        if (roomId && uid) {
+             // บันทึก HP กลับไปยัง Firebase โดยตรง
+             db.ref(`rooms/${roomId}/playersByUid/${uid}`).update({ hp: currentHp })
+                .catch(error => console.error("Error updating HP automatically:", error));
+        }
+    }
+    
 
     let htmlContent = `<h3>สรุปข้อมูลตัวละคร: ${player.name}</h3><hr>`;
 
     if (!previousPlayerState || previousPlayerState.name !== player.name) {
+        // [ไม่มีการเปรียบเทียบครั้งแรก]
         htmlContent += `<p><strong>เพศ:</strong> ${player.gender}</p><p><strong>อายุ:</strong> ${player.age}</p>`;
         htmlContent += `<p><strong>เผ่าพันธุ์:</strong> ${player.race}</p><p><strong>อาชีพ:</strong> ${player.class}</p><hr>`;
         let levelDisplay = `<strong>ระดับ (Level):</strong> ${currentStats.Level}`;
@@ -160,33 +199,63 @@ function displayPlayerSummary(player) {
             htmlContent += `<p><strong>${stat}:</strong> ${currentStats[stat]}</p>`;
         }
     } else {
+        // [มีการเปรียบเทียบ]
         htmlContent += `<p><strong>เพศ:</strong> ${player.gender}</p><p><strong>อายุ:</strong> ${player.age}</p>`;
-        const raceChangeHtml = previousPlayerState.Race !== player.race ? ` ${previousPlayerState.Race} -> <span style="color:${buffColor};">${player.race}</span>` : player.race;
+        
+        // 5. แสดงเอฟเฟกต์การเปลี่ยนแปลงเผ่าพันธุ์/อาชีพ
+        const raceChangeHtml = previousPlayerState.Race !== player.race ? ` ${previousPlayerState.Race} -> <span style="color:${buffColor};">**${player.race}** 🔄</span>` : player.race;
         htmlContent += `<p><strong>เผ่าพันธุ์:</strong> ${raceChangeHtml}</p>`; 
-        const classChangeHtml = previousPlayerState.Class !== player.class ? ` ${previousPlayerState.Class} -> <span style="color:${buffColor};">${player.class}</span>` : player.class;
+        const classChangeHtml = previousPlayerState.Class !== player.class ? ` ${previousPlayerState.Class} -> <span style="color:${buffColor};">**${player.class}** 🔄</span>` : player.class;
         htmlContent += `<p><strong>อาชีพ:</strong> ${classChangeHtml}</p><hr>`;
 
+        // 6. แสดงเอฟเฟกต์การเปลี่ยนแปลง Level/TempLevel
         let levelHtml = `<strong>ระดับ (Level):</strong> `;
-        if(previousPlayerState.Level !== currentStats.Level){
-            levelHtml += `${previousPlayerState.Level} -> <span style="color:${currentStats.Level > previousPlayerState.Level ? buffColor : debuffColor};">${currentStats.Level}</span>`;
+        const levelDiff = currentStats.Level - previousPlayerState.Level;
+        if(levelDiff !== 0){
+            const indicator = levelDiff > 0 ? '⬆️' : '⬇️';
+            const color = levelDiff > 0 ? buffColor : debuffColor;
+            levelHtml += `<span style="color:${color};">**${currentStats.Level}** ${indicator}</span>`;
         } else {
             levelHtml += `${currentStats.Level}`;
         }
+        
         if (currentStats.TempLevel !== 0) {
             const newTotalLevel = currentStats.Level + currentStats.TempLevel;
-            levelHtml += ` <span style="color: ${currentStats.TempLevel > 0 ? buffColor : debuffColor};">(${newTotalLevel})</span>`;
+            const tempLevelDiff = currentStats.TempLevel - previousPlayerState.TempLevel;
+            const indicator = tempLevelDiff > 0 ? '✨' : (tempLevelDiff < 0 ? '💥' : '');
+            const color = currentStats.TempLevel > 0 ? buffColor : debuffColor;
+            levelHtml += ` <span style="color: ${color}; font-weight: bold;">(${newTotalLevel}) ${indicator}</span>`;
         }
         htmlContent += `<p>${levelHtml}</p><hr>`;
         
+        // 7. แสดงเอฟเฟกต์การเปลี่ยนแปลง STATS, HP, MaxHP
         for (const stat of ['HP', 'MaxHP', 'STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']) {
             const oldValue = previousPlayerState[stat];
             const newValue = currentStats[stat];
-            let indicator = newValue > oldValue ? '⏫' : (newValue < oldValue ? '⏬' : '');
-            let changeHtml = oldValue !== newValue ? ` ${oldValue} -> <span style="color:${newValue > oldValue ? buffColor : debuffColor};">${newValue} ${indicator}</span>` : newValue;
-            if (stat === 'HP') {
-                htmlContent += `<p><strong>HP:</strong> ${changeHtml} / ${currentStats.MaxHP}</p>`;
-            } else if (stat !== 'MaxHP') {
-                htmlContent += `<p><strong>${stat}:</strong> ${changeHtml}</p>`;
+            
+            // ตรวจสอบการเปลี่ยนแปลงจากค่าที่แสดงล่าสุด
+            if (oldValue !== newValue) {
+                const diff = newValue - oldValue;
+                const indicator = diff > 0 ? '⏫' : '⏬';
+                const color = diff > 0 ? buffColor : debuffColor;
+                
+                let label = stat;
+                if (stat === 'HP') {
+                    label = 'HP';
+                    htmlContent += `<p><strong>${label}:</strong> <span style="color:${color}; font-weight: bold;">**${newValue}** ${indicator}</span> / ${currentStats.MaxHP}</p>`;
+                } else if (stat === 'MaxHP') {
+                    label = 'MaxHP';
+                    htmlContent += `<p><strong>${label}:</strong> <span style="color:${color}; font-weight: bold;">**${newValue}** ${indicator}</span></p>`;
+                } else {
+                    htmlContent += `<p><strong>${label}:</strong> <span style="color:${color}; font-weight: bold;">**${newValue}** ${indicator}</span></p>`;
+                }
+            } else if (stat === 'HP') {
+                // แสดงผลปกติถ้าไม่มีการเปลี่ยนแปลง แต่ต้องแสดง MaxHP ด้วย
+                 htmlContent += `<p><strong>HP:</strong> ${currentStats.HP} / ${currentStats.MaxHP}</p>`;
+            } else if (stat === 'MaxHP') {
+                htmlContent += `<p><strong>MaxHP:</strong> ${currentStats.MaxHP}</p>`;
+            } else {
+                htmlContent += `<p><strong>${stat}:</strong> ${currentStats[stat]}</p>`;
             }
         }
     }
@@ -202,6 +271,7 @@ function displayPlayerSummary(player) {
         htmlContent += `<p style="margin-top: 10px; color: #777;"><em>ผู้เล่นนี้ยังไม่มีเควสที่ใช้งานอยู่</em></p>`;
     }
     output.innerHTML = htmlContent;
+    // บันทึกสถานะปัจจุบันเพื่อเปรียบเทียบครั้งต่อไป
     previousPlayerState = { name: player.name, Race: player.race, Class: player.class, ...currentStats };
 }
 
@@ -246,16 +316,44 @@ function displayDiceLog(logs) {
 
 function saveBasicInfo() {
     const roomId = sessionStorage.getItem('roomId');
-    // ⭐️ [FIXED]: ได้รับชื่อผู้เล่นที่เลือก และหา UID
     const name = document.getElementById("playerSelect").value;
     const uid = getUidByName(name);
-    if (!roomId || !uid) return;
+    const player = allPlayersDataByUID[uid]; // ดึงข้อมูลผู้เล่นปัจจุบัน
+    if (!roomId || !uid || !player) return;
+
+    const newRace = document.getElementById("editRace").value;
+    const newClass = document.getElementById("editClass").value;
+    let newHp = parseInt(document.getElementById("editHp").value) || 1;
     
+    // 1. คำนวณ MaxHP ใหม่ด้วยค่าปัจจุบันใน UI
+    const tempPlayer = JSON.parse(JSON.stringify(player));
+    const statsKeys = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
+    statsKeys.forEach(stat => {
+        if (!tempPlayer.stats) tempPlayer.stats = {};
+        if (!tempPlayer.stats.tempStats) tempPlayer.stats.tempStats = {};
+        // ใช้ค่า Temp Stat ที่แสดงอยู่ใน UI มาคำนวณ
+        tempPlayer.stats.tempStats[stat] = parseInt(document.getElementById(`edit${stat}Temp`).value) || 0;
+    });
+    // อัพเดต Race/Class ชั่วคราวสำหรับการคำนวณ MaxHP
+    tempPlayer.race = newRace;
+    tempPlayer.class = newClass;
+
+    const finalCon = calculateTotalStat(tempPlayer, 'CON');
+    const maxHp = calculateHP(newRace, newClass, finalCon);
+
+    // 2. ป้องกันไม่ให้ HP เกิน MaxHP
+    if (newHp > maxHp) {
+        newHp = maxHp;
+        showCustomAlert(`ค่า HP ถูกปรับลดเหลือ ${maxHp} เนื่องจากเกิน MaxHP ที่คำนวณได้ใหม่`, 'warning');
+        document.getElementById("editHp").value = newHp; // อัพเดตใน UI ด้วย
+    }
+
     const updates = {
         gender: document.getElementById("editGender").value, age: parseInt(document.getElementById("editAge").value) || 1,
-        race: document.getElementById("editRace").value, class: document.getElementById("editClass").value,
-        background: document.getElementById("editBackground").value, hp: parseInt(document.getElementById("editHp").value) || 1,
+        race: newRace, class: newClass,
+        background: document.getElementById("editBackground").value, hp: newHp, // ใช้ newHp ที่ถูกตรวจสอบแล้ว
     };
+    
     // ⭐️ [FIXED]: เปลี่ยนพาธเป็น /playersByUid/{uid}
     db.ref(`rooms/${roomId}/playersByUid/${uid}`).update(updates)
       .then(() => showCustomAlert("บันทึกข้อมูลทั่วไปเรียบร้อย!", 'success'))
@@ -552,7 +650,188 @@ function completeQuest() {
     });
 }
 
-// ... (ส่วน rollDmDice, clearDiceLogs, monsterTemplates, populateMonsterTemplates, loadMonsterTemplate, deleteRoom, changeRoomPassword, changeDMPassword เหมือนเดิม) ...
+// =================================================================================
+// ส่วนที่ 3B: Dice Roller / Monster Templates / Room Controls (ที่ขาดหายไป)
+// =================================================================================
+
+const monsterTemplates = {
+    'Goblin': { hp: 5, str: 8, dex: 14, con: 10, int: 8, wis: 10, cha: 6 },
+    'Orc': { hp: 15, str: 16, dex: 12, con: 14, int: 7, wis: 10, cha: 8 },
+    'Giant Spider': { hp: 20, str: 14, dex: 16, con: 12, int: 6, wis: 10, cha: 4 },
+    'Dragon (Young)': { hp: 50, str: 20, dex: 10, con: 18, int: 14, wis: 12, cha: 16 }
+    // เพิ่มมอนสเตอร์อื่นๆ ที่นี่
+};
+
+function populateMonsterTemplates() {
+    const select = document.getElementById("monsterTemplateSelect");
+    select.innerHTML = '<option value="">--- เลือกมอนสเตอร์ ---</option>';
+    for (const name in monsterTemplates) {
+        select.innerHTML += `<option value="${name}">${name}</option>`;
+    }
+}
+
+function loadMonsterTemplate() {
+    const selectedName = document.getElementById("monsterTemplateSelect").value;
+    const template = monsterTemplates[selectedName];
+    if (template) {
+        document.getElementById("monsterHp").value = template.hp;
+        document.getElementById("monsterStr").value = template.str;
+        document.getElementById("monsterDex").value = template.dex;
+        document.getElementById("monsterCon").value = template.con;
+        document.getElementById("monsterInt").value = template.int;
+        document.getElementById("monsterWis").value = template.wis;
+        document.getElementById("monsterCha").value = template.cha;
+    } else {
+        document.getElementById("monsterHp").value = 0;
+        document.getElementById("monsterStr").value = 0;
+        document.getElementById("monsterDex").value = 0;
+        document.getElementById("monsterCon").value = 0;
+        document.getElementById("monsterInt").value = 0;
+        document.getElementById("monsterWis").value = 0;
+        document.getElementById("monsterCha").value = 0;
+    }
+}
+
+function saveStory() {
+    const roomId = sessionStorage.getItem('roomId');
+    const storyText = document.getElementById("story").value;
+    if (!roomId) return;
+
+    db.ref(`rooms/${roomId}/story`).set(storyText)
+      .then(() => showCustomAlert("บันทึกเนื้อเรื่องเรียบร้อย!", 'success'))
+      .catch(err => showCustomAlert("เกิดข้อผิดพลาด: " + err.message, 'error'));
+}
+
+function deleteRoom() {
+    const roomId = sessionStorage.getItem('roomId');
+    if (!roomId) return;
+    
+    Swal.fire({
+        title: '💣 ยืนยันการลบห้องถาวร?',
+        text: "การกระทำนี้ไม่สามารถย้อนกลับได้! ข้อมูลผู้เล่นและห้องทั้งหมดจะถูกลบ",
+        icon: 'error',
+        showCancelButton: true,
+        confirmButtonText: 'ใช่, ลบห้องเลย!',
+        confirmButtonColor: '#dc3545'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // โค้ดลบห้องใน Firebase
+            db.ref(`rooms/${roomId}`).remove()
+              .then(() => {
+                sessionStorage.removeItem('roomId');
+                showCustomAlert("ลบห้องเรียบร้อย! กำลังกลับสู่ล็อบบี้...", 'success');
+                setTimeout(() => window.location.replace('lobby.html'), 1500);
+              })
+              .catch(err => showCustomAlert("เกิดข้อผิดพลาดในการลบห้อง: " + err.message, 'error'));
+        }
+    });
+}
+
+function changeRoomPassword() {
+    const roomId = sessionStorage.getItem('roomId');
+    if (!roomId) return;
+
+    Swal.fire({
+        title: '🔑 เปลี่ยนรหัสเข้าห้อง',
+        input: 'password',
+        inputLabel: 'รหัสใหม่',
+        inputPlaceholder: 'ใส่รหัสใหม่ที่นี่',
+        showCancelButton: true,
+        confirmButtonText: 'บันทึก',
+        confirmButtonColor: '#5bc0de',
+        inputValidator: (value) => {
+            if (!value) {
+                return 'กรุณาใส่รหัสผ่าน!';
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            db.ref(`rooms/${roomId}/password`).set(result.value)
+              .then(() => showCustomAlert("เปลี่ยนรหัสเข้าห้องเรียบร้อย!", 'success'));
+        }
+    });
+}
+
+function changeDMPassword() {
+    const roomId = sessionStorage.getItem('roomId');
+    if (!roomId) return;
+
+    Swal.fire({
+        title: '🔒 เปลี่ยนรหัส DM Panel',
+        input: 'password',
+        inputLabel: 'รหัสใหม่',
+        inputPlaceholder: 'ใส่รหัส DM ใหม่ที่นี่',
+        showCancelButton: true,
+        confirmButtonText: 'บันทึก',
+        confirmButtonColor: '#f0ad4e',
+        inputValidator: (value) => {
+            if (!value) {
+                return 'กรุณาใส่รหัสผ่าน!';
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            db.ref(`rooms/${roomId}/dmPassword`).set(result.value)
+              .then(() => showCustomAlert("เปลี่ยนรหัส DM Panel เรียบร้อย!", 'success'));
+        }
+    });
+}
+
+function rollDmDice() {
+    const diceType = parseInt(document.getElementById("dmDiceType").value);
+    const diceCount = parseInt(document.getElementById("dmDiceCount").value);
+    const roomId = sessionStorage.getItem('roomId');
+    if (!roomId) return;
+
+    // การทอยเต๋าจริง
+    let results = [];
+    for(let i=0; i<diceCount; i++) {
+        results.push(Math.floor(Math.random() * diceType) + 1);
+    }
+    const total = results.reduce((a, b) => a + b, 0);
+
+    const animationArea = document.getElementById("dm-dice-animation-area");
+    const resultDisplay = document.getElementById("dmDiceResult");
+    
+    // อัปเดต UI
+    resultDisplay.innerHTML = `**ผลการทอย:** ${results.join(' + ')} = ${total} (d${diceType})`;
+    animationArea.innerHTML = '🎲' // อาจใช้โค้ดจาก dice-roller.js เพื่อแสดงแอนิเมชันจริง
+
+    // บันทึกผล DM dice log (ถ้ามีใน Firebase structure)
+    db.ref(`rooms/${roomId}/dmDiceLog`).push({
+        name: "DM",
+        dice: diceType, 
+        count: diceCount, 
+        result: results, 
+        total: total, 
+        timestamp: new Date().toISOString()
+    }).then(() => {
+        // ไม่ต้องแสดง alert เพราะผลลัพธ์แสดงใน UI แล้ว
+    }).catch(err => console.error("Error saving DM dice log:", err));
+
+    // (ในโปรเจ็กต์จริง โค้ดจาก dice-roller.js จะถูกใช้เพื่อแสดงแอนิเมชัน)
+}
+
+function clearDiceLogs() {
+    const roomId = sessionStorage.getItem('roomId');
+    if (!roomId) return;
+
+    Swal.fire({
+        title: 'ยืนยันการล้างประวัติ?',
+        text: "คุณต้องการล้างประวัติการทอยเต๋าของผู้เล่นทั้งหมดหรือไม่?",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'ใช่, ล้างเลย!',
+        cancelButtonText: 'ยกเลิก'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            db.ref(`rooms/${roomId}/diceLogs`).set(null)
+              .then(() => showCustomAlert("ล้างประวัติการทอยเต๋าเรียบร้อย!", 'success'))
+              .catch(err => showCustomAlert("เกิดข้อผิดพลาดในการล้างข้อมูล: " + err.message, 'error'));
+        }
+    });
+}
+
 
 // =================================================================================
 // ส่วนที่ 4: Initial Load & Real-time Listeners
