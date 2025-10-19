@@ -116,9 +116,9 @@ function calculateTotalStat(charData, statKey) {
     const tempLevel = charData.tempLevel || 0;
     const totalLevel = permanentLevel + tempLevel;
     const baseStat = (stats.baseRaceStats?.[statKey] || 0) +
-                     (stats.baseClassStats?.[statKey] || 0) +
-                     (stats.investedStats?.[statKey] || 0) +
-                     (stats.tempStats?.[statKey] || 0);
+                        (stats.baseClassStats?.[statKey] || 0) +
+                        (stats.investedStats?.[statKey] || 0) +
+                        (stats.tempStats?.[statKey] || 0);
     if (baseStat === 0) return 0;
     const levelBonus = baseStat * (totalLevel - 1) * 0.2;
     return Math.floor(baseStat + levelBonus);
@@ -296,14 +296,27 @@ function displayStory(storyData) {
 // =================================================================================
 
 async function playerRollDice() {
-    // [FIXED] ดึง roomId มาใช้
     const roomId = sessionStorage.getItem('roomId');
-    const name = localStorage.getItem("character");
-    if (!roomId || !name) return;
+    // ⭐️ [FIXED]: ดึง UID ของผู้ใช้ปัจจุบัน
+    const currentUserUid = localStorage.getItem('currentUserUid'); 
+    
+    if (!roomId || !currentUserUid) {
+        showCustomAlert("ไม่พบข้อมูลห้องหรือผู้ใช้! กรุณาล็อกอินและเข้าร่วมห้องใหม่อีกครั้ง", 'error');
+        return;
+    }
+
+    // ⭐️ [FIXED]: ดึงชื่อตัวละครจาก Firebase โดยใช้ UID
+    const playerSnapshot = await db.ref(`rooms/${roomId}/playersByUid/${currentUserUid}/name`).get(); 
+    const name = playerSnapshot.val();
+
+    if (!name) {
+        showCustomAlert("ไม่พบตัวละครของคุณ! ไม่สามารถทอยเต๋าได้", 'error');
+        return;
+    }
 
     const diceType = parseInt(document.getElementById("diceType").value);
     const diceCount = parseInt(document.getElementById("diceCount").value);
-    const rollButton = event.target;
+    const rollButton = event.target; // ต้องมั่นใจว่า event.target ถูกส่งมา
 
     if (isNaN(diceType) || isNaN(diceCount) || diceCount <= 0) return;
 
@@ -313,14 +326,14 @@ async function playerRollDice() {
     );
 
     const playerLog = {
-        name: name,
+        name: name, // ใช้ชื่อตัวละครที่ดึงมา
         dice: diceType,
         count: diceCount,
         result: results,
         timestamp: new Date().toISOString()
     };
     
-    // [FIXED] บันทึก Log การทอยลง Firebase ในห้องที่ถูกต้อง
+    // บันทึก Log การทอยลง Firebase ในห้องที่ถูกต้อง
     db.ref(`rooms/${roomId}/diceLogs`).push(playerLog);
 }
 
@@ -329,51 +342,48 @@ async function playerRollDice() {
 // =================================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // [FIXED] 1. ดึง roomId และ characterName จาก Storage
+    // 1. ดึง roomId และ currentUserUid จาก Storage
     const roomId = sessionStorage.getItem('roomId');
-    const currentCharacterName = localStorage.getItem("character");
+    const currentUserUid = localStorage.getItem('currentUserUid');
 
-    // [FIXED] 2. ตรวจสอบว่ามีข้อมูลครบถ้วนหรือไม่
-    if (!roomId) {
-        alert("ไม่พบข้อมูลห้อง! กำลังกลับไปที่ Lobby...");
+    // 2. ตรวจสอบว่ามีข้อมูลครบถ้วนหรือไม่
+    if (!roomId || !currentUserUid) {
+        alert("ไม่พบข้อมูลห้องหรือผู้ใช้! กำลังกลับไปที่ Lobby...");
         window.location.replace('lobby.html');
         return;
     }
     
-    // [แก้ไข]: แสดงปุ่มสร้างตัวละครเมื่อไม่มีตัวละคร
-    if (!currentCharacterName) {
+    // ⭐️ [FIXED]: ใช้เส้นทางที่ถูกต้องตาม UID
+    const playerRef = db.ref(`rooms/${roomId}/playersByUid/${currentUserUid}`); 
+    console.log(`ผู้ใช้ UID: ${currentUserUid} อยู่ในห้อง: ${roomId}`);
+
+    // 3. lắng nghe ข้อมูลตัวละครของผู้ใช้ปัจจุบัน
+    playerRef.on('value', (snapshot) => {
         const infoPanel = document.getElementById("characterInfoPanel");
-        // เขียน HTML ใหม่เฉพาะส่วนที่จำเป็นเพื่อให้แสดงปุ่มสร้างตัวละคร
-        infoPanel.innerHTML = `
-            <h2>ข้อมูลตัวละคร</h2>
-            <p style="text-align: center;">คุณยังไม่มีตัวละครในห้องนี้</p>
-            <a href="PlayerCharecter.html">
-                <button style="width: 100%; margin-top: 20px;">สร้างตัวละคร</button>
-            </a>
-        `;
-        // ยังคงต้องฟัง Story ต่อไป
-    }
-    console.log(`ผู้เล่น ${currentCharacterName || '(ยังไม่มีตัวละคร)'} อยู่ในห้อง: ${roomId}`);
 
-    // [FIXED] 3. lắng nghe ข้อมูลตัวละคร "ภายในห้องนี้เท่านั้น" (ถ้ามีตัวละคร)
-    if (currentCharacterName) {
-        const playerRef = db.ref(`rooms/${roomId}/players/${currentCharacterName}`);
-        playerRef.on('value', (snapshot) => {
-            if (snapshot.exists()) {
-                const characterData = snapshot.val();
-                displayCharacter(characterData);
-                displayInventory(characterData);
-                displayQuest(characterData);
-                displayEnemy(characterData);
-            } else {
-                showCustomAlert(`ตัวละคร "${currentCharacterName}" ถูกลบออกจากระบบ`, 'error');
-                localStorage.removeItem('character');
-                location.reload();
-            }
-        });
-    }
+        if (snapshot.exists()) {
+            const characterData = snapshot.val();
+            // ถ้ามีตัวละคร: แสดงข้อมูล
+            displayCharacter(characterData);
+            displayInventory(characterData);
+            displayQuest(characterData);
+            displayEnemy(characterData);
+            console.log(`โหลดตัวละคร ${characterData.name} สำเร็จ`);
+            
+        } else {
+            // ถ้าไม่มีตัวละคร: แสดงปุ่มสร้างตัวละคร
+            infoPanel.innerHTML = `
+                <h2>ข้อมูลตัวละคร</h2>
+                <p style="text-align: center;">คุณยังไม่มีตัวละครในห้องนี้</p>
+                <a href="PlayerCharecter.html">
+                    <button style="width: 100%; margin-top: 20px;">สร้างตัวละคร</button>
+                </a>
+            `;
+            console.log(`ผู้ใช้ UID: ${currentUserUid} ยังไม่มีตัวละคร`);
+        }
+    });
 
-    // [FIXED] 4. lắng nghe เนื้อเรื่อง "ภายในห้องนี้เท่านั้น"
+    // 4. lắng nghe เนื้อเรื่อง "ภายในห้องนี้เท่านั้น"
     const storyRef = db.ref(`rooms/${roomId}/story`);
     storyRef.on('value', (snapshot) => {
         displayStory(snapshot.val());
