@@ -32,14 +32,14 @@
             font-size: 0.95em;
         }
         .player-stats ul {
-            list-style: none; /* เปลี่ยนเป็น none เพื่อให้ดูเป็นระเบียบ */
+            list-style: none;
             padding: 0;
             margin-top: 10px;
         }
         .player-stats li {
              margin-left: 0;
              padding-left: 0;
-             font-family: 'Cinzel', serif; /* ใช้ Cinzel สำหรับ Stats */
+             font-family: 'Cinzel', serif;
         }
     </style>
 </head>
@@ -50,82 +50,150 @@
     <div class="team-grid" id="teamViewContainer">
         <p style="grid-column: 1 / -1; text-align: center;">กำลังโหลดข้อมูลทีม...</p>
     </div>
-
+    
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="Javascript/firebase-init.js"></script>
-    <script src="Javascript/charector.js"></script>
-    <script src="Javascript/player-dashboard-script.js"></script> 
     
     <script>
-        // ดึงฟังก์ชันคำนวณ stats จากไฟล์ที่โหลดมาก่อนหน้า
-        // ตรวจสอบว่าฟังก์ชันถูกกำหนดใน window. หรือไม่ (หาก player-dashboard-script.js ไม่ได้กำหนดไว้ใน window)
-        // เพื่อให้ง่าย เราจะใช้ฟังก์ชันที่กำหนดใน player-dashboard-script.js โดยตรง
-        
-        const calculateTotalStat = window.calculateTotalStat;
-        const calculateHP = window.calculateHP;
-        const currentCharacterName = localStorage.getItem("character");
-        const roomId = sessionStorage.getItem('roomId');
+    // =================================================================
+    // Utility Functions (นำเข้าจาก charector.js เพื่อให้ทำงานได้สมบูรณ์)
+    // =================================================================
 
-        if (!roomId || !currentCharacterName) {
-            Swal.fire('ข้อผิดพลาด', 'โปรดเข้าร่วมห้องและสร้างตัวละครก่อน', 'error').then(() => {
-                window.location.replace('lobby.html');
-            });
+    function calculateTotalStat(charData, statKey) {
+        if (!charData || !charData.stats) return 0;
+        const stats = charData.stats;
+        const permanentLevel = charData.level || 1;
+        const tempLevel = charData.tempLevel || 0;
+        const totalLevel = permanentLevel + tempLevel;
+        const baseStat = (stats.baseRaceStats?.[statKey] || 0) +
+                        (stats.baseClassStats?.[statKey] || 0) +
+                        (stats.investedStats?.[statKey] || 0) +
+                        (stats.tempStats?.[statKey] || 0);
+        if (baseStat === 0) return 0;
+        const levelBonus = baseStat * (totalLevel - 1) * 0.2;
+        return Math.floor(baseStat + levelBonus);
+    }
+
+    function calculateHP(charRace, charClass, finalCon) {
+        const racialBaseHP = {
+            'มนุษย์': 10, 
+            'เอลฟ์': 8, 
+            'คนแคระ': 12, 
+            'ฮาล์ฟลิ่ง': 8, 
+            'ไทฟลิ่ง': 9, 
+            'แวมไพร์': 9, 
+            'เงือก': 10, 
+            'ออร์ค': 14, 
+            'โนม': 7, 
+            'เอลฟ์ดำ': 8, 
+            'นางฟ้า': 6, 
+            'มาร': 11, 
+            'โกเลม': 18,
+            'อันเดด': 25,
+            'ครึ่งมังกร': 20,
+            'มังกร': 40 ,
+            'ครึ่งเทพ': 30,
+            'พระเจ้า': 100
+        };
+        const classBaseHP = {
+          'บาร์บาเรียน': 16,
+          'แทงค์': 25, 
+          'นักรบ': 12, 
+          'นักดาบเวทย์': 10 ,
+          'อัศวิน': 13, 
+          'อัศวินศักดิ์สิทธิ์': 14,
+          'ผู้กล้า': 18,
+          'นักเวท': 4, 
+          'นักบวช': 8,
+          'นักบุญหญิง': 9,
+          'สตรีศักดิ์สิทธิ์': 10,
+          'โจร': 8, 
+          'นักฆ่า': 11,
+          'เรนเจอร์': 10,
+          'พ่อค้า': 6, 
+          'นักปราชญ์': 4, 
+          'เจ้าเมือง': 15,
+          'จอมมาร': 22,
+          'เทพเจ้า': 50
+        };
+        const conModifier = Math.floor((finalCon - 10) / 2);
+        const raceHP = racialBaseHP[charRace] || 8; 
+        const classHP = classBaseHP[charClass] || 6; 
+        
+        return raceHP + classHP + conModifier;
+    }
+
+    // =================================================================
+    // Main Logic - แก้ไขส่วนนี้
+    // =================================================================
+
+    // ⭐️ [FIX]: ใช้ currentUserUid แทน currentCharacterName
+    const currentUserUid = localStorage.getItem("currentUserUid"); 
+    const roomId = sessionStorage.getItem('roomId');
+    const teamViewContainer = document.getElementById('teamViewContainer');
+
+    if (!roomId || !currentUserUid) { // ⭐️ [FIX]: ตรวจสอบ UID
+        Swal.fire('ข้อผิดพลาด', 'โปรดเข้าร่วมห้องและล็อกอินก่อน', 'error').then(() => {
+            window.location.replace('lobby.html');
+        });
+        throw new Error("Missing Room ID or User UID");
+    }
+
+
+    // ⭐️ [FIX]: เปลี่ยนพาธการฟังข้อมูลเป็น /playersByUid
+    db.ref(`rooms/${roomId}/playersByUid`).on('value', (snapshot) => {
+        const allPlayers = snapshot.val(); // ข้อมูลผู้เล่นทั้งหมด (คีย์คือ UID)
+        teamViewContainer.innerHTML = ''; // Clear previous data
+        let foundTeammates = false;
+
+        if (!allPlayers) {
+            teamViewContainer.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">ยังไม่มีผู้เล่นอื่นเข้าร่วมห้อง</p>';
+            return;
         }
 
-        const teamViewContainer = document.getElementById('teamViewContainer');
+        // ⭐️ [FIX]: วนลูปตาม UID และเปรียบเทียบ UID ของตัวเอง
+        for (const uid in allPlayers) {
+            if (uid !== currentUserUid) { // ⭐️ [FIX]: ไม่แสดงข้อมูลถ้า UID ตรงกับ UID ของตัวเอง
+                foundTeammates = true;
+                const player = allPlayers[uid]; // player คือข้อมูลตัวละครของเพื่อนร่วมทีม
+                
+                // คำนวณค่าที่ต้องใช้แสดงผล
+                const finalCon = calculateTotalStat(player, 'CON');
+                const maxHp = calculateHP(player.race, player.class, finalCon);
+                const totalLevel = (player.level || 1) + (player.tempLevel || 0);
 
-        // [FIXED] ใช้ Listener แบบ Realtime เพื่ออัปเดตข้อมูลทีม
-        db.ref(`rooms/${roomId}/players`).on('value', (snapshot) => {
-            const allPlayers = snapshot.val();
-            teamViewContainer.innerHTML = ''; // Clear previous data
-            let foundTeammates = false;
-
-            if (!allPlayers) {
-                teamViewContainer.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">ยังไม่มีผู้เล่นอื่นเข้าร่วมห้อง</p>';
-                return;
+                const card = document.createElement('div');
+                card.className = 'player-card';
+                card.innerHTML = `
+                    <h3>${player.name} (Lv. ${totalLevel})</h3>
+                    <p><strong>เผ่า:</strong> ${player.race} &bull; <strong>อาชีพ:</strong> ${player.class}</p>
+                    <p><strong>HP:</strong> ${player.hp} / ${maxHp}</p>
+                    <p><strong>เพศ:</strong> ${player.gender || '-'} &bull; <strong>อายุ:</strong> ${player.age || '-'}</p>
+                    <details>
+                        <summary style="font-weight: bold; margin-top: 10px;">ภูมิหลัง</summary>
+                        <p style="padding: 5px 0;">${player.background || 'ไม่มีข้อมูล'}</p>
+                    </details>
+                    <div class="player-stats">
+                        <ul>
+                            <li><strong>STR:</strong> ${calculateTotalStat(player, 'STR')}</li>
+                            <li><strong>DEX:</strong> ${calculateTotalStat(player, 'DEX')}</li>
+                            <li><strong>CON:</strong> ${calculateTotalStat(player, 'CON')}</li>
+                            <li><strong>INT:</strong> ${calculateTotalStat(player, 'INT')}</li>
+                            <li><strong>WIS:</strong> ${calculateTotalStat(player, 'WIS')}</li>
+                            <li><strong>CHA:</strong> ${calculateTotalStat(player, 'CHA')}</li>
+                        </ul>
+                    </div>
+                `;
+                teamViewContainer.appendChild(card);
             }
+        }
 
-            for (const name in allPlayers) {
-                if (name !== currentCharacterName) { // ไม่แสดงข้อมูลตัวเอง
-                    foundTeammates = true;
-                    const player = allPlayers[name];
-                    const finalCon = calculateTotalStat(player, 'CON');
-                    const maxHp = calculateHP(player.race, player.class, finalCon);
-                    const totalLevel = (player.level || 1) + (player.tempLevel || 0);
-
-                    const card = document.createElement('div');
-                    card.className = 'player-card';
-                    card.innerHTML = `
-                        <h3>${player.name} (Lv. ${totalLevel})</h3>
-                        <p><strong>เผ่า:</strong> ${player.race} &bull; <strong>อาชีพ:</strong> ${player.class}</p>
-                        <p><strong>HP:</strong> ${player.hp} / ${maxHp}</p>
-                        <p><strong>เพศ:</strong> ${player.gender || '-'} &bull; <strong>อายุ:</strong> ${player.age || '-'}</p>
-                        <details>
-                            <summary style="font-weight: bold; margin-top: 10px;">ภูมิหลัง</summary>
-                            <p style="padding: 5px 0;">${player.background || 'ไม่มีข้อมูล'}</p>
-                        </details>
-                        <div class="player-stats">
-                            <ul>
-                                <li><strong>STR:</strong> ${calculateTotalStat(player, 'STR')}</li>
-                                <li><strong>DEX:</strong> ${calculateTotalStat(player, 'DEX')}</li>
-                                <li><strong>CON:</strong> ${calculateTotalStat(player, 'CON')}</li>
-                                <li><strong>INT:</strong> ${calculateTotalStat(player, 'INT')}</li>
-                                <li><strong>WIS:</strong> ${calculateTotalStat(player, 'WIS')}</li>
-                                <li><strong>CHA:</strong> ${calculateTotalStat(player, 'CHA')}</li>
-                            </ul>
-                        </div>
-                    `;
-                    teamViewContainer.appendChild(card);
-                }
-            }
-
-            if (!foundTeammates) {
-                teamViewContainer.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">ยังไม่มีผู้เล่นอื่นเข้าร่วมห้อง</p>';
-            }
-        });
-    </script>
+        if (!foundTeammates) {
+            teamViewContainer.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">ยังไม่มีผู้เล่นอื่นเข้าร่วมห้อง</p>';
+        }
+    });
+</script>
 </body>
-
 </html>
