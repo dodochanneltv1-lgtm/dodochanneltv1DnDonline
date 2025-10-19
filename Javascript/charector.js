@@ -219,10 +219,10 @@ function createCharacter() {
              return;
         } else {
             playerRef.set(characterData).then(() => {
-                showCustomAlert("สร้างตัวละครสำเร็จ! กำลังไปหน้าแดชบอร์ด", 'success');
+                showCustomAlert("สร้างตัวละครสำเร็จ! กำลังไปหน้า Skill Point", 'success');
                 setTimeout(() => {
-                    // ⭐️ เปลี่ยนไปหน้า dashboard เลย เพราะตอนนี้เรามีตัวละครแล้ว
-                    window.location.href = "player-dashboard.html"; 
+                    // ⭐️ เปลี่ยนไปหน้า Skill Point เลย เพราะตอนนี้เรามีตัวละครแล้ว
+                    window.location.href = "stat-assignment.html"; 
                 }, 1000);
             }).catch((error) => {
                 showCustomAlert("ไม่สามารถสร้างตัวละครได้: " + error.message, 'error');
