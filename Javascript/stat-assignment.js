@@ -8,7 +8,8 @@ let baseInvested = {};
 const statsToAssign = {};
 const statOrder = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
 
-// --- Utility & Calculation Functions (ส่วนนี้ส่วนใหญ่เหมือนเดิม) ---
+// --- Utility & Calculation Functions (ส่วนนี้เหมือนเดิม) ---
+// ... (โค้ด calculateHP และ calculateTotalStat เหมือนเดิม) ...
 
 function showCustomAlert(message, iconType = 'info') {
     Swal.fire({ title: 'แจ้งเตือน!', text: message, icon: iconType });
@@ -44,26 +45,26 @@ function calculateTotalStat(charData, statKey) {
     return Math.floor(baseStat + levelBonus);
 }
 
+
 // --- Core Functions (แก้ไขให้ใช้ Firebase) ---
 
 function loadCharacterData() {
-    // [FIX] 1. ดึง roomId และ charName
+    // ⭐️ [FIXED] 1. ดึง roomId และ currentUserUid
     const roomId = sessionStorage.getItem('roomId');
-    const charName = localStorage.getItem("character");
+    const currentUserUid = localStorage.getItem("currentUserUid"); // ⭐️ ดึง UID แทน "character"
 
-    if (!roomId || !charName) {
-        showCustomAlert("ไม่พบข้อมูลห้องหรือตัวละคร!", 'error');
+    if (!roomId || !currentUserUid) {
+        showCustomAlert("ไม่พบข้อมูลห้องหรือผู้ใช้!", 'error');
         window.location.replace('lobby.html');
         return;
     }
 
-    // [FIX] 2. ดึงข้อมูลจาก path ที่ถูกต้อง "ภายในห้อง"
-    const playerRef = db.ref(`rooms/${roomId}/players/${charName}`);
+    // ⭐️ [FIXED] 2. ดึงข้อมูลจาก path ที่ถูกต้อง /playersByUid/{uid}
+    const playerRef = db.ref(`rooms/${roomId}/playersByUid/${currentUserUid}`);
     playerRef.get().then((snapshot) => {
         if (snapshot.exists()) {
             characterData = snapshot.val();
             
-            // (ส่วนที่เหลือของฟังก์ชันเหมือนเดิม)
             baseInvested = JSON.parse(JSON.stringify(characterData.stats.investedStats || {}));
             Object.assign(statsToAssign, characterData.stats.investedStats || {});
             newPointsAvailable = characterData.freeStatPoints || 0;
@@ -72,7 +73,9 @@ function loadCharacterData() {
             updatePointsUI();
             updateStatsSummary();
         } else {
-            showCustomAlert("ไม่พบข้อมูลตัวละครในฐานข้อมูล!", 'error');
+            // หากไม่พบตัวละคร ให้ส่งผู้ใช้ไปสร้างตัวละคร
+            showCustomAlert("ไม่พบข้อมูลตัวละครในฐานข้อมูล! กรุณาสร้างตัวละครใหม่", 'error');
+            window.location.replace('PlayerCharecter.html'); 
         }
     });
 }
@@ -117,7 +120,6 @@ function adjustStat(button, amount) {
     const currentSpent = Object.values(statsToAssign).reduce((a, b) => a + b, 0);
     const newPointsUsed = currentSpent - baseSpent;
 
-    // (Validation logic เดิมของคุณดีอยู่แล้ว คงไว้)
     if (amount > 0 && newPointsUsed >= newPointsAvailable) {
         showCustomAlert("แต้มไม่พอ!", 'warning');
         return;
@@ -149,10 +151,10 @@ function updateStatsSummary() {
 }
 
 function finalizeStats() {
-    // [FIX] 1. ดึง roomId และ charName
+    // ⭐️ [FIXED] 1. ดึง roomId และ currentUserUid
     const roomId = sessionStorage.getItem('roomId');
-    const charName = localStorage.getItem("character");
-    if (!roomId || !charName) return;
+    const currentUserUid = localStorage.getItem("currentUserUid"); // ⭐️ ดึง UID แทน "character"
+    if (!roomId || !currentUserUid) return;
 
     const baseSpent = Object.values(baseInvested).reduce((a, b) => a + b, 0);
     const currentSpent = Object.values(statsToAssign).reduce((a, b) => a + b, 0);
@@ -163,8 +165,8 @@ function finalizeStats() {
         'freeStatPoints': newPointsAvailable - newPointsUsed
     };
 
-    // [FIX] 2. อัปเดตข้อมูลไปยัง path ที่ถูกต้อง "ภายในห้อง"
-    const playerRef = db.ref(`rooms/${roomId}/players/${charName}`);
+    // ⭐️ [FIXED] 2. อัปเดตข้อมูลไปยัง path ที่ถูกต้อง /playersByUid/{uid}
+    const playerRef = db.ref(`rooms/${roomId}/playersByUid/${currentUserUid}`);
 
     playerRef.update(updates).then(() => {
         showCustomAlert("บันทึกสถานะเรียบร้อยแล้ว! กำลังกลับไปที่แดชบอร์ด...", 'success');
