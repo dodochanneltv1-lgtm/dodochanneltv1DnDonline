@@ -135,6 +135,14 @@ function calculateHP(charRace, charClass, finalCon) {
 
 function createCharacter() {
     const roomId = sessionStorage.getItem('roomId');
+    const user = firebase.auth().currentUser; // ดึงผู้ใช้ปัจจุบัน
+    
+    if (!roomId || !user) { // ⭐️ [FIXED]: ตรวจสอบ user ด้วย
+        showCustomAlert("ไม่พบข้อมูลห้องหรือผู้ใช้! กรุณาล็อกอินและเข้าร่วมห้องใหม่อีกครั้ง", 'error');
+        return;
+    }
+    const uid = user.uid;
+
     if (!roomId) {
         showCustomAlert("ไม่พบข้อมูลห้อง! กรุณากลับไปที่ Lobby แล้วเข้าร่วมห้องใหม่อีกครั้ง", 'error');
         return;
@@ -147,6 +155,15 @@ function createCharacter() {
     const charClass = document.getElementById('class').value;
     const alignment = document.getElementById('alignment').value;
 
+    if (name === "") {
+        showCustomAlert("กรุณาระบุชื่อตัวละครก่อน!", 'warning');
+        return;
+    }
+    const ageValue = parseInt(age);
+    if (isNaN(ageValue) || ageValue <= 0) {
+        showCustomAlert("กรุณาระบุอายุที่เป็นตัวเลขและมากกว่า 0!", 'error');
+        return;
+    }
     // --- ส่วนที่แก้ไข ---
     if (race === 'นางฟ้า' && gender !== 'หญิง') {
         showCustomAlert("เผ่าพันธุ์ 'นางฟ้า' สามารถเลือกได้เฉพาะเพศ 'หญิง' เท่านั้น!", 'error');
@@ -174,10 +191,7 @@ function createCharacter() {
     }
     // --- สิ้นสุดส่วนที่แก้ไข ---
 
-    if (name === "") {
-        showCustomAlert("กรุณาระบุชื่อตัวละครก่อน!", 'warning');
-        return;
-    }
+
     // ... โค้ดส่วนที่เหลือของฟังก์ชันเหมือนเดิม ...
     const baseRaceStats = getRaceStatBonus(race);
     const baseClassStats = getClassStatBonus(charClass);
@@ -195,19 +209,20 @@ function createCharacter() {
         hp, inventory: [], quest: null, enemy: null
     };
 
-    const playerRef = db.ref(`rooms/${roomId}/players/${characterData.name}`);
+    const playerRef = db.ref(`rooms/${roomId}/playersByUid/${uid}`);
     
     playerRef.get().then((snapshot) => {
         if (snapshot.exists()) {
-            showCustomAlert(`ชื่อตัวละคร "${name}" มีอยู่ในห้องนี้แล้ว!`, 'error');
+             showCustomAlert(`คุณมีตัวละครอยู่ในห้องนี้แล้ว (${snapshot.val().name})`, 'error');
+             // อาจจะ redirect ไป dashboard เลย หรือให้ผู้ใช้ลบตัวละครเก่าก่อน
+             setTimeout(() => { window.location.href = "player-dashboard.html"; }, 1000);
+             return;
         } else {
             playerRef.set(characterData).then(() => {
-                // บันทึกชื่อตัวละครล่าสุดที่สร้างไว้ใน localStorage เพื่อให้ Player Dashboard รู้จัก
-                localStorage.setItem("character", name);
-                showCustomAlert("สร้างตัวละครสำเร็จ! กำลังไปหน้าลงแต้มสถานะ", 'success');
+                showCustomAlert("สร้างตัวละครสำเร็จ! กำลังไปหน้าแดชบอร์ด", 'success');
                 setTimeout(() => {
-                    // ไม่ต้องส่ง roomId ไป เพราะ stat-assignment.js จะดึงจาก sessionStorage เอง
-                    window.location.href = "stat-assignment.html";
+                    // ⭐️ เปลี่ยนไปหน้า dashboard เลย เพราะตอนนี้เรามีตัวละครแล้ว
+                    window.location.href = "player-dashboard.html"; 
                 }, 1000);
             }).catch((error) => {
                 showCustomAlert("ไม่สามารถสร้างตัวละครได้: " + error.message, 'error');
