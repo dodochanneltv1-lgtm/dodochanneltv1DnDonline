@@ -150,6 +150,33 @@
       #turnIndicator { text-align: center; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-weight: bold; }
         #turnIndicator.my-turn { background-color: #28a745; color: white; text-shadow: 1px 1px 2px black; }
         #turnIndicator.other-turn { background-color: #333; color: #aaa; }
+      .stat-change {
+    transition: color 0.3s ease, font-weight 0.3s ease;
+    animation-duration: 1s;
+    animation-iteration-count: 3;
+}
+.stat-up {
+    color: #00ff00; /* เขียวสำหรับค่าขึ้น */
+    animation-name: stat-flash-up;
+    font-weight: bold;
+}
+.stat-down {
+    color: #ff4d4d; /* แดงสำหรับค่าลง */
+    animation-name: stat-flash-down;
+    font-weight: bold;
+}
+
+@keyframes stat-flash-up {
+    0% { color: #fff; }
+    50% { color: #00ff00; transform: scale(1.1); }
+    100% { color: inherit; }
+}
+
+@keyframes stat-flash-down {
+    0% { color: #fff; }
+    50% { color: #ff4d4d; transform: scale(0.9); }
+    100% { color: inherit; }
+}
     </style>
 </head>
 <body>
@@ -277,3 +304,4 @@
       <script src="Javascript/player-dashboard-script.js"></script>
 </body>
 </html>
+
