@@ -75,7 +75,14 @@
           </table>
           <button onclick="saveStats()" style="margin-top: 10px; width: 100%; background-color: #28a745;">✨ บันทึกสถานะ (บัฟ/ดีบัฟ)</button>
       </div>
-    </div>
+        <div class="control-section">
+          <h4>มอบ EXP</h4>
+          <input type="number" id="awardExpAmount" placeholder="จำนวน EXP">
+          <button onclick="awardExp()">มอบ EXP</button>
+      </div>
+          <input type="number" id="questExpReward" placeholder="รางวัล EXP (ถ้ามี)">
+          <input type="number" id="monsterExpValue" placeholder="EXP ที่ได้">
+      </div>
     
     <div class="panel">
         <h2>⚔️ ควบคุมสถานะการต่อสู้ ⚔️</h2>
@@ -154,14 +161,13 @@
 
       <div id="weaponFields" class="hidden">
           <label>ช่องสวมใส่:</label>
-          <select id="customWeaponSlot">
-            <option value="mainHand">อาวุธหลัก</option>
-            <option value="offHand">อาวุธรอง</option>
-          </select>
           <label>ชนิดอาวุธ:</label>
-          <input type="text" id="customWeaponType" placeholder="เช่น ดาบมือเดียว, โล่, คทา">
           <label>ลูกเต๋าความเสียหาย:</label>
-          <input type="text" id="customDamageDice" placeholder="เช่น d8, d12">
+          <input type="text" id="customDamageDice" placeholder="Damage Dice (เช่น d8)">    
+          <select id="customWeaponType"></select>
+          <label style="margin-top: 10px; display: block;">อาชีพที่แนะนำ:</label>
+          <div id="recommendedClassCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px; max-height: 80px; overflow-y: auto; background: rgba(0,0,0,0.2); padding: 5px; border-radius: 5px;">
+    </div>
       </div>
       
       <h4>กำหนดโบนัส (ใส่เฉพาะที่ต้องการ)</h4>
@@ -251,6 +257,7 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="Javascript/firebase-init.js"></script>
+  <script src="Javascript/ui-helpers.js"></script>
   <script src="Javascript/dice-roller.js"></script>
   <script src="Javascript/dm-panel-script.js"></script>
 </body>
