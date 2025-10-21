@@ -91,6 +91,73 @@
             transform: translateX(3px);
             box-shadow: 0 0 10px rgba(255, 165, 0, 0.3);
         }
+       .swal2-popup {
+        border: 2px solid #ffd700; /* ขอบทองรอบกล่อง */
+        background: #1c1c1c !important; /* พื้นหลังเข้ม */
+    }
+
+    .swal2-popup .swal2-title {
+        color: #ffd700;
+        text-shadow: 0 0 5px rgba(255, 165, 0, 0.7);
+    }
+    
+    .swal2-popup button.swal2-styled {
+        font-size: 1.2em;
+        font-weight: bold;
+        padding: 15px 30px;
+        margin: 5px 0;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+        transition: transform 0.1s ease, box-shadow 0.2s ease;
+        border: none;
+    }
+
+    .swal2-popup button.swal2-styled:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6);
+    }
+    
+    /* สไตล์เฉพาะสำหรับปุ่ม Player (สีส้ม-ทอง) */
+    #swal-player-btn {
+        background: linear-gradient(90deg, #ff8c00, #cc5500) !important;
+        color: #fff;
+    }
+    
+    /* สไตล์เฉพาะสำหรับปุ่ม DM (สีน้ำเงินเข้ม) */
+    #swal-dm-btn {
+        background: linear-gradient(90deg, #007bff, #004d99) !important;
+        color: #fff;
+    }
+
+    /* สไตล์เฉพาะสำหรับปุ่ม Cancel (สีเทาเข้ม) */
+    #swal-cancel-btn {
+        background: #444 !important; 
+        color: #ccc;
+    }
+
+    /* สไตล์อิโมจิ/ไอคอนในปุ่ม SweetAlert: ทำให้ไอคอนดูชัดเจนขึ้น */
+    .swal2-popup button.swal2-styled .emoji-icon {
+        font-size: 1.5em; /* ขยายขนาดอิโมจิ */
+        margin-right: 10px;
+        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.9)); /* เพิ่มเงาให้เด่น */
+    }
+    
+    /* [ใหม่] CSS สำหรับ animation สถานะ (Stat Up/Down) ใน player-dashboard-script.js */
+    @keyframes stat-fade-in {
+        0% { color: inherit; transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { color: inherit; transform: scale(1); }
+    }
+    
+    .stat-up {
+        color: #00ff00 !important; /* สีเขียวเมื่อค่าเพิ่ม */
+        animation: stat-fade-in 1.5s ease;
+    }
+
+    .stat-down {
+        color: #ff4500 !important; /* สีแดงเมื่อค่าลด */
+        animation: stat-fade-in 1.5s ease;
+    }
     </style>
 </head>
 <body>
@@ -138,9 +205,8 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="Javascript/firebase-init.js"></script>
+    <script src="Javascript/ui-helpers.js"></script>
     <script src="Javascript/auth.js"></script>
     <script src="Javascript/lobby.js"></script>
 </body>
 </html>
-
-
