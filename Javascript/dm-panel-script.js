@@ -1045,7 +1045,7 @@ async function addCustomEnemy() {
     damageDice,
     stats: { STR: str, DEX: dex, CON: con, INT: intt, WIS: wis, CHA: cha },
     type: "enemy",
-    target: "shared",
+    targetUid: "shared",
     createdAt: Date.now(),
   };
 
