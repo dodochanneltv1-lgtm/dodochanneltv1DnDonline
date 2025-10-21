@@ -527,7 +527,7 @@ async function performAttackRoll() {
     if (!selectedEnemyKey) return showCustomAlert("กรุณาเลือกเป้าหมาย!", 'warning');
 
     const roomId = sessionStorage.getItem('roomId');
-    const enemyData = (await db.ref(`rooms/${roomId}/combat/enemies/${selectedEnemyKey}`).get()).val();
+    const enemyData = allEnemiesInRoom[selectedEnemyKey];
     const playerData = (await db.ref(`rooms/${roomId}/playersByUid/${uid}`).get()).val();
     if (!enemyData || !playerData) return showCustomAlert("ไม่พบข้อมูลเป้าหมายหรือผู้เล่น!", 'error');
 
@@ -565,7 +565,7 @@ async function performDamageRoll() {
     if (!uid || !roomId || !selectedEnemyKey) return;
 
     document.getElementById('damageRollSection').style.display = 'none';
-    const enemyRef = db.ref(`rooms/${roomId}/combat/enemies/${selectedEnemyKey}`);
+    const enemyRef = db.ref(`rooms/${roomId}/enemies/${selectedEnemyKey}`);
     const [enemySnapshot, playerSnapshot] = await Promise.all([
         enemyRef.get(),
         db.ref(`rooms/${roomId}/playersByUid/${uid}`).get()
