@@ -138,40 +138,56 @@
     </div>
     
     <div class="panel">
-      <h2>สร้างไอเทมพิเศษ (พร้อมโบนัส)</h2>
-      <input type="text" id="customItemName" placeholder="ชื่อไอเทม">
-      <input type="number" id="customItemQty" value="1" min="1">
-      <hr>
-      <label>ประเภทไอเทม:</label>
-      <select id="customItemType" onchange="toggleItemFields()">
-          <option value="ทั่วไป">ทั่วไป</option>
-          <option value="สวมใส่">สวมใส่</option>
-          <option value="อาวุธ">อาวุธ</option>
-      </select>
+    <h2>สร้างไอเทมพิเศษ (พร้อมโบนัส)</h2>
+    <input type="text" id="customItemName" placeholder="ชื่อไอเทม">
+    <input type="number" id="customItemQty" value="1" min="1">
+    <hr>
+    <label>ประเภทไอเทม:</label>
+    <select id="customItemType" onchange="toggleItemFields()">
+        <option value="ทั่วไป">ทั่วไป</option>
+        <option value="สวมใส่">สวมใส่</option>
+        <option value="อาวุธ">อาวุธ</option>
+        <option value="บริโภค">บริโภค (Consumable)</option>
+    </select>
 
-      <div id="equipmentFields" class="hidden">
-          <label>ช่องสวมใส่:</label>
-          <select id="customItemSlot">
-              <option value="head">หัว</option>
-              <option value="chest">ลำตัว</option>
-              <option value="legs">ขา</option>
-              <option value="feet">เท้า</option>
-          </select>
-      </div>
-
-      <div id="weaponFields" class="hidden">
-          <label>ช่องสวมใส่:</label>
-          <label>ชนิดอาวุธ:</label>
-          <label>ลูกเต๋าความเสียหาย:</label>
-          <input type="text" id="customDamageDice" placeholder="Damage Dice (เช่น d8)">    
-          <select id="customWeaponType"></select>
-          <label style="margin-top: 10px; display: block;">อาชีพที่แนะนำ:</label>
-          <div id="recommendedClassCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px; max-height: 80px; overflow-y: auto; background: rgba(0,0,0,0.2); padding: 5px; border-radius: 5px;">
+    <div id="equipmentFields" class="hidden">
+        <label>ช่องสวมใส่:</label>
+        <select id="customItemSlot">
+            <option value="head">หัว</option>
+            <option value="chest">ลำตัว</option>
+            <option value="legs">ขา</option>
+            <option value="feet">เท้า</option>
+        </select>
     </div>
-      </div>
-      
-      <h4>กำหนดโบนัส (ใส่เฉพาะที่ต้องการ)</h4>
-      <div class="item-bonus-grid">
+
+    <div id="weaponFields" class="hidden">
+        <label>ลูกเต๋าความเสียหาย:</label>
+        <input type="text" id="customDamageDice" placeholder="Damage Dice (เช่น d8)">    
+        <label>ชนิดอาวุธ:</label>
+        <select id="customWeaponType"></select>
+        <label style="margin-top: 10px; display: block;">อาชีพที่แนะนำ:</label>
+        <div id="recommendedClassCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px; max-height: 80px; overflow-y: auto; background: rgba(0,0,0,0.2); padding: 5px; border-radius: 5px;">
+        </div>
+    </div> <div id="consumableFields" class="hidden">
+        <h4>ตั้งค่าเอฟเฟกต์ (เลือก 1 อย่าง)</h4>
+        <label>ฟื้นฟู HP:</label>
+        <input type="number" id="itemEffectHeal" placeholder="จำนวน HP">
+        <hr>
+        <label>เพิ่มสถานะถาวร:</label>
+        <select id="itemEffectPermStat">
+            <option value="">--เลือกค่าสถานะ--</option>
+            <option value="STR">STR</option>
+            <option value="DEX">DEX</option>
+            <option value="CON">CON</option>
+            <option value="INT">INT</option>
+            <option value="WIS">WIS</option>
+            <option value="CHA">CHA</option>
+        </select>
+        <input type="number" id="itemEffectPermAmount" placeholder="จำนวนที่จะบวก">
+    </div>
+    
+    <h4>กำหนดโบนัส (ใส่เฉพาะที่ต้องการ)</h4>
+    <div class="item-bonus-grid">
         <label>HP:</label> <input type="number" id="itemBonusHP" placeholder="+HP">
         <label>STR:</label> <input type="number" id="itemBonusSTR" placeholder="+STR">
         <label>DEX:</label> <input type="number" id="itemBonusDEX" placeholder="+DEX">
@@ -179,9 +195,9 @@
         <label>INT:</label> <input type="number" id="itemBonusINT" placeholder="+INT">
         <label>WIS:</label> <input type="number" id="itemBonusWIS" placeholder="+WIS">
         <label>CHA:</label> <input type="number" id="itemBonusCHA" placeholder="+CHA">
-      </div>
-      <button onclick="sendCustomItem()" style="background-color: #ffc107; color: black; margin-top: 15px;">🎁 ส่งไอเทมพิเศษ</button>
     </div>
+    <button onclick="sendCustomItem()" style="background-color: #ffc107; color: black; margin-top: 15px;">🎁 ส่งไอเทมพิเศษ</button>
+</div>
 
     <div class="panel">
         <h2>👹 จัดการคู่ต่อสู้ทั้งหมดในฉาก</h2>

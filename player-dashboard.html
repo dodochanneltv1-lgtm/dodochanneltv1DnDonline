@@ -238,7 +238,7 @@
             
             <label for="enemyTargetSelect"><strong>เลือกเป้าหมาย:</strong></label>
             <select id="enemyTargetSelect" style="width: 100%; margin-bottom: 10px;"></select>
-            
+            <button id="skillButton" onclick="showSkillModal()" style="background-color: #6f42c1; margin-top: 5px;">🌟 ใช้สกิล</button>
             <button id="attackRollButton" onclick="performAttackRoll()">1. ทอยเต๋าโจมตี (d20)</button>
             
             <div id="damageRollSection" style="display:none; margin-top:15px; border-top: 1px dashed #ccc; padding-top: 10px;">
@@ -305,6 +305,8 @@
       <script src="Javascript/firebase-init.js"></script>
       <script src="Javascript/ui-helpers.js"></script>
       <script src="Javascript/dice-roller.js"></script>
+      <script src="Javascript/skills-data.js"></script> 
+      <script src="Javascript/player-actions.js"></script>
       <script src="Javascript/player-dashboard-script.js"></script>
 </body>
 </html>
