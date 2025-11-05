@@ -1,184 +1,493 @@
-// Javascript/player-actions.js - REBUILT & REFACTORED VERSION (Oct 29, 2025)
-// - Refactored applyEffect into category helpers (Buffs, Healing, Direct Dmg, Percent Dmg)
-// - Implemented new custom % HP formulas (Hero, Sage, Excalibur)
-// - Fixed Excalibur roll logic (moved from checkConditions to performSuccessRoll)
+/*
+* =================================================================
+* Javascript/player-actions.js (v3.3 - KONGFA FIX - REVISED)
+* -----------------------------------------------------------------
+* นี่คือ "เอนจิ้น" หลักในการใช้งานสกิล, ไอเทม, และการโจมตี
+*
+* [ ⭐️ KONGFA-FIX ⭐️ ]
+* 1. [แก้ไข] บั๊ก "เกิดข้อผิดพลาดร้ายแรงในการใช้สกิล"
+* - (ลบ Helper Functions ที่ซ้ำซ้อนด้านบนออก)
+* - โค้ดนี้จะดึงฟังก์ชัน (calculateTotalStat, calculateHP, getStatBonus)
+* จากไฟล์ charector.js และ player-dashboard-script.js
+* 2. [คงเดิม] ตรรกะการใช้ยา (useConsumableItem)
+* 3. [แก้ไขบั๊ก] `equipItem` และ `unequipItem` แก้ไขการ Stack ของ (Bug 6)
+* 4. [แก้ไขบั๊ก] `performDamageRoll` แก้ไขการเรียกสูตร %HP (Bug 1)
+* =================================================================
+*/
 
-// --- (Helper Functions - ไม่เปลี่ยนแปลง) ---
-const calcTotalStatFn = typeof calculateTotalStat === 'function' ? calculateTotalStat : () => { console.error("calculateTotalStat not found!"); return 10; };
-const calcHPFn = typeof calculateHP === 'function' ? calculateHP : () => { console.error("calculateHP not found!"); return 10; };
-const getStatBonusFn = typeof getStatBonus === 'function' ? getStatBonus : () => { console.error("getStatBonus not found!"); return 0; };
-const showAlert = typeof showCustomAlert === 'function' ? showCustomAlert : (msg, type) => { console.log(type + ':', msg); };
+// --- [ ⭐️ KONGFA-FIX ⭐️ ] ---
+// (ลบส่วน Helper Functions ที่ซ้ำซ้อน (const calculateTotalStat = ...) ออกจากตรงนี้)
+// เราจะใช้ฟังก์ชันที่ถูกโหลดมาจาก charector.js และ player-dashboard-script.js โดยตรง
+// --- End of Fix ---
+
+
+/**
+ * [ ⭐️ KONGFA-FIX ⭐️ ]
+ * ฟังก์ชันใหม่สำหรับใช้ไอเทมบริโภค (Consumable)
+ */
+async function useConsumableItem(itemIndex) {
+    const uid = firebase.auth().currentUser?.uid; 
+    const roomId = sessionStorage.getItem('roomId'); 
+    if (!uid || !roomId) return showAlert('ข้อมูลไม่ครบถ้วน!', 'error');
+
+    const playerRef = db.ref(`rooms/${roomId}/playersByUid/${uid}`);
+    
+    try {
+        const transactionResult = await playerRef.transaction(currentData => {
+            if (!currentData) return; 
+
+            if (!currentData.inventory || !currentData.inventory[itemIndex]) {
+                console.error("Item index not found:", itemIndex);
+                return; 
+            }
+
+            const item = currentData.inventory[itemIndex];
+            if (item.itemType !== 'บริโภค') {
+                console.error("Item is not consumable:", item.name);
+                return; 
+            }
+            
+            const effects = item.effects; 
+            let changesOccurred = false;
+
+            // 1. ฮีล (Heal)
+            if (effects && effects.heal && effects.heal > 0) {
+                // (ต้องคำนวณ MaxHP ณ ปัจจุบัน)
+                const currentCon = calculateTotalStat(currentData, 'CON');
+                const maxHp = currentData.maxHp || calculateHP(currentData.race, currentData.classMain, currentCon);
+                currentData.hp = Math.min(maxHp, (currentData.hp || 0) + effects.heal);
+                changesOccurred = true;
+            }
+
+            // 2. บัฟถาวร (Permanent Stats)
+            if (effects && effects.permStats && effects.permStats.length > 0) {
+                if (!currentData.stats) currentData.stats = {};
+                if (!currentData.stats.investedStats) currentData.stats.investedStats = {};
+                
+                effects.permStats.forEach(mod => {
+                    if(mod && mod.stat && mod.amount) {
+                        const currentStat = currentData.stats.investedStats[mod.stat] || 0;
+                        currentData.stats.investedStats[mod.stat] = currentStat + mod.amount;
+                    }
+                });
+                changesOccurred = true;
+            }
+
+            // 3. บัฟชั่วคราว (Temporary Stats)
+            if (effects && effects.tempStats && effects.tempStats.length > 0) {
+                if (!currentData.activeEffects) currentData.activeEffects = [];
+                
+                effects.tempStats.forEach(mod => {
+                    if(mod && mod.stat && mod.amount && mod.turns) {
+                        currentData.activeEffects.push({
+                            skillId: `item_${item.name.replace(/\s/g, '_')}`,
+                            name: `(ยา) ${item.name}`,
+                            type: 'BUFF',
+                            stat: mod.stat,
+                            modType: 'FLAT', 
+                            amount: mod.amount,
+                            turnsLeft: mod.turns
+                        });
+                    }
+                });
+                changesOccurred = true;
+            }
+
+            if (!changesOccurred) {
+                console.log("Consumable had no effect.");
+            }
+
+            // 4. ลบไอเทม
+            if (item.quantity > 1) {
+                item.quantity--;
+            } else {
+                currentData.inventory.splice(itemIndex, 1);
+            }
+            
+            return currentData; // (บันทึก Transaction)
+        });
+
+        // (หลัง Transaction สำเร็จ)
+        if (transactionResult.committed) {
+            // (หาชื่อไอเทมใหม่ เพราะ index อาจเปลี่ยน)
+            const item = transactionResult.snapshot.val().inventory[itemIndex] || { name: "ไอเทมที่ใช้ไป" };
+            showAlert(`ใช้ ${item.name} สำเร็จ!`, 'success');
+        } else {
+            // (Transaction ล้มเหลว อาจจะเพราะ item index ผิด)
+            // showAlert('ไม่สามารถใช้ไอเทมได้ (Transaction failed)', 'error');
+        }
+
+    } catch (error) {
+        console.error("Error using consumable:", error);
+        showAlert(`เกิดข้อผิดพลาดในการใช้ไอเทม: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * [ ⭐️ KONGFA-FIX ⭐️ ]
+ * ย้ายมาจาก player-dashboard-script.js
+ * (อัปเดต `equipItem` ให้ใช้ `itemIndex`)
+ * [ ⭐️ KONGFA-FIX (Bug 6) ⭐️ ] แก้ไขการ Stack ของ
+ */
+async function equipItem(itemIndex) {
+    const uid = firebase.auth().currentUser?.uid; 
+    const roomId = sessionStorage.getItem('roomId'); 
+    if (!uid || !roomId) return; 
+    
+    const playerRef = db.ref(`rooms/${roomId}/playersByUid/${uid}`); 
+    
+    // (ใช้ Transaction เพื่อป้องกัน Race Condition ตอนสลับของ)
+    try {
+        const transactionResult = await playerRef.transaction(charData => {
+            if (!charData) return; // (ยกเลิกถ้าไม่พบข้อมูล)
+
+            let { inventory = [], equippedItems = {} } = charData; 
+
+            if (itemIndex < 0 || itemIndex >= inventory.length) {
+                console.error(`Equip failed: Index ${itemIndex} out of bounds.`);
+                return; // (ยกเลิก Transaction)
+            }
+            
+            const itemToEquip = { ...inventory[itemIndex] };
+            if (itemToEquip.itemType !== 'สวมใส่' && itemToEquip.itemType !== 'อาวุธ') {
+                console.error(`Equip failed: Item ${itemToEquip.name} is not equippable.`);
+                return; 
+            }
+            
+            if (!itemToEquip.originalBonuses) {
+                itemToEquip.originalBonuses = { ...(itemToEquip.bonuses || {}) };
+            }
+            
+            // (ตัวแปรชั่วคราวสำหรับเก็บของที่จะถอด)
+            let itemToReturn = null;
+            let targetSlot = null;
+            
+            // (ตรรกะการสวมใส่)
+            if (itemToEquip.itemType === 'อาวุธ') {
+                // (ใช้ตรรกะ: ถ้ามือหลักว่าง -> ใส่มือหลัก, ถ้าไม่ -> ใส่มือรอง)
+                if (!equippedItems['mainHand'] || equippedItems['mainHand'].durability <= 0) {
+                    targetSlot = 'mainHand';
+                } else if (!equippedItems['offHand'] || equippedItems['offHand'].durability <= 0) {
+                    targetSlot = 'offHand';
+                } else {
+                    targetSlot = 'mainHand'; // (ถ้าเต็ม 2 มือ ก็ทับมือหลัก)
+                }
+
+            } else {
+                targetSlot = itemToEquip.slot; // (เกราะ)
+            }
+
+            if (!targetSlot) {
+                console.error(`Equip failed: Item ${itemToEquip.name} has no slot.`);
+                return; // (ยกเลิก)
+            }
+
+            // 1. ถอดของเก่า (ถ้ามี)
+            if (equippedItems[targetSlot]) {
+                itemToReturn = { ...equippedItems[targetSlot] };
+                const baseItemToReturn = { 
+                    ...itemToReturn, 
+                    bonuses: { ...(itemToReturn.originalBonuses || itemToReturn.bonuses) }, 
+                    quantity: 1 
+                };
+                delete baseItemToReturn.isProficient;
+                delete baseItemToReturn.isOffHand;
+                itemToReturn = baseItemToReturn; // (เก็บไว้เพิ่มกลับ)
+            }
+            
+            // 2. คำนวณโบนัส (ข้อ 5.3)
+            if (itemToEquip.itemType === 'อาวุธ') {
+                const proficiencies = (typeof CLASS_WEAPON_PROFICIENCY !== 'undefined' && CLASS_WEAPON_PROFICIENCY[charData.classMain]) || [];
+                
+                if (targetSlot === 'mainHand') {
+                    if (proficiencies.includes(itemToEquip.weaponType)) {
+                        itemToEquip.isProficient = true;
+                    } else {
+                        itemToEquip.isProficient = false;
+                    }
+                    itemToEquip.isOffHand = false;
+                
+                } else if (targetSlot === 'offHand') {
+                    itemToEquip.isProficient = false;
+                    itemToEquip.isOffHand = true; 
+                }
+            }
+            
+            // 3. ตั้งค่าความทนทาน
+            if (itemToEquip.durability === undefined) {
+                itemToEquip.durability = 100;
+            }
+            
+            // 4. สวมใส่ของใหม่
+            equippedItems[targetSlot] = { ...itemToEquip, quantity: 1 };
+
+            // 5. ลบของใหม่ออกจาก Inventory (ใช้ Index)
+            if (inventory[itemIndex].quantity > 1) {
+                inventory[itemIndex].quantity--; 
+            } else {
+                inventory.splice(itemIndex, 1);
+            }
+            
+            // 6. เพิ่มของเก่ากลับเข้า Inventory (ถ้ามี)
+            if(itemToReturn) {
+                // [ ⭐️ KONGFA-FIX (Bug 6) ⭐️ ]
+                // (เพิ่มตรรกะตรวจสอบ Stackable)
+                const itemToReturnHasBonuses = itemToReturn.bonuses && Object.keys(itemToReturn.bonuses).length > 0;
+                const itemToReturnHasEffects = itemToReturn.effects && (
+                    (itemToReturn.effects.heal && itemToReturn.effects.heal > 0) ||
+                    (itemToReturn.effects.permStats && itemToReturn.effects.permStats.length > 0) ||
+                    (itemToReturn.effects.tempStats && itemToReturn.effects.tempStats.length > 0)
+                );
+                const isItemToReturnStackable = (itemToReturn.itemType === 'ทั่วไป' || itemToReturn.itemType === 'บริโภค') && !itemToReturnHasBonuses && !itemToReturnHasEffects;
+
+                let existingIdx = -1;
+
+                if (isItemToReturnStackable) {
+                    // (หาไอเทมชื่อเดียวกันที่ stack ได้เหมือนกัน)
+                    existingIdx = inventory.findIndex(i => {
+                        const iHasBonuses = i.bonuses && Object.keys(i.bonuses).length > 0;
+                        const iHasEffects = i.effects && (
+                            (i.effects.heal && i.effects.heal > 0) ||
+                            (i.effects.permStats && i.effects.permStats.length > 0) ||
+                            (i.effects.tempStats && i.effects.tempStats.length > 0)
+                        );
+                        return i.name === itemToReturn.name && (i.itemType === 'ทั่วไป' || i.itemType === 'บริโภค') && !iHasBonuses && !iHasEffects;
+                    });
+                } else {
+                    // (ตรรกะเดิม: หาไอเทม unique ที่มีโบนัสเหมือนกัน)
+                    existingIdx = inventory.findIndex(i => 
+                        i.name === itemToReturn.name && 
+                        JSON.stringify(i.originalBonuses || {}) === JSON.stringify(itemToReturn.originalBonuses || {})
+                    ); 
+                }
+                
+                if (existingIdx > -1) {
+                    inventory[existingIdx].quantity++; 
+                } else {
+                    inventory.push(itemToReturn); 
+                }
+            }
+            
+            // (อัปเดตข้อมูลใน Transaction)
+            charData.inventory = inventory;
+            charData.equippedItems = equippedItems;
+            
+            return charData; // (ส่งข้อมูลใหม่กลับ)
+            
+        }); // (สิ้นสุด Transaction)
+
+        if (transactionResult.committed) {
+             showAlert(`สวมใส่ไอเทมสำเร็จ!`, 'success'); 
+        } else {
+             showAlert('สวมใส่ไอเทมล้มเหลว (อาจมีคนใช้พร้อมกัน)', 'error');
+        }
+
+    } catch (error) {
+        console.error("Equip Item Error:", error);
+        showAlert(`เกิดข้อผิดพลาดในการสวมใส่: ${error.message}`, 'error');
+    }
+}
+
+
+/**
+ * [ ⭐️ KONGFA-FIX ⭐️ ]
+ * ย้ายมาจาก player-dashboard-script.js
+ * [ ⭐️ KONGFA-FIX (Bug 6) ⭐️ ] แก้ไขการ Stack ของ
+ */
+async function unequipItem(slot) {
+    const uid = firebase.auth().currentUser?.uid; 
+    const roomId = sessionStorage.getItem('roomId'); 
+    if (!uid || !roomId) return; 
+    
+    const playerRef = db.ref(`rooms/${roomId}/playersByUid/${uid}`); 
+    const snapshot = await playerRef.get(); 
+    if (!snapshot.exists()) return; 
+    
+    const charData = snapshot.val(); 
+    let { inventory = [], equippedItems = {} } = charData; 
+    
+    const itemToUnequip = equippedItems[slot]; 
+    if (!itemToUnequip) return; 
+
+    // (สร้าง baseItem ที่จะคืนเข้า inventory)
+    const baseItem = { 
+        ...itemToUnequip, 
+        bonuses: { ...(itemToUnequip.originalBonuses || itemToUnequip.bonuses) }, 
+        quantity: 1 
+    }; 
+    delete baseItem.isProficient; 
+    delete baseItem.isOffHand; 
+
+    // [ ⭐️ KONGFA-FIX (Bug 6) ⭐️ ]
+    // (เพิ่มตรรกะตรวจสอบ Stackable)
+    const baseItemHasBonuses = baseItem.bonuses && Object.keys(baseItem.bonuses).length > 0;
+    const baseItemHasEffects = baseItem.effects && (
+        (baseItem.effects.heal && baseItem.effects.heal > 0) ||
+        (baseItem.effects.permStats && baseItem.effects.permStats.length > 0) ||
+        (baseItem.effects.tempStats && baseItem.effects.tempStats.length > 0)
+    );
+    const isBaseItemStackable = (baseItem.itemType === 'ทั่วไป' || baseItem.itemType === 'บริโภค') && !baseItemHasBonuses && !baseItemHasEffects;
+    
+    let existingIdx = -1;
+
+    if (isBaseItemStackable) {
+        // (หาไอเทมชื่อเดียวกันที่ stack ได้เหมือนกัน)
+        existingIdx = inventory.findIndex(i => {
+            const iHasBonuses = i.bonuses && Object.keys(i.bonuses).length > 0;
+            const iHasEffects = i.effects && (
+                (i.effects.heal && i.effects.heal > 0) ||
+                (i.effects.permStats && i.effects.permStats.length > 0) ||
+                (i.effects.tempStats && i.effects.tempStats.length > 0)
+            );
+            return i.name === baseItem.name && (i.itemType === 'ทั่วไป' || i.itemType === 'บริโภค') && !iHasBonuses && !iHasEffects;
+        });
+    } else {
+        // (ตรรกะเดิม: หาไอเทม unique ที่มีโบนัสเหมือนกัน)
+        existingIdx = inventory.findIndex(i => 
+            i.name === baseItem.name && 
+            JSON.stringify(i.originalBonuses || {}) === JSON.stringify(baseItem.originalBonuses || {})
+        );
+    }
+
+    if (existingIdx > -1) {
+        inventory[existingIdx].quantity++; 
+    } else {
+        inventory.push(baseItem); 
+    }
+    
+    equippedItems[slot] = null; 
+    
+    await playerRef.update({ inventory, equippedItems }); 
+    showAlert(`ถอด ${baseItem.name} ออกแล้ว`, 'info'); 
+}
+
+
+// =================================================================
+// ----------------- ตรรกะสกิล (SKILL LOGIC) -----------------
+// =================================================================
 
 async function endPlayerTurn(uid, roomId) {
     try {
-        console.log(`[END TURN] Attempting for UID: ${uid} in Room: ${roomId}`);
         const combatSnap = await db.ref(`rooms/${roomId}/combat`).get();
         if (combatSnap.exists() && combatSnap.val().isActive) {
             const currentCombatState = combatSnap.val();
-            if (currentCombatState.turnOrder && currentCombatState.currentTurnIndex < currentCombatState.turnOrder.length) {
-                const currentTurnUnit = currentCombatState.turnOrder[currentCombatState.currentTurnIndex];
-                if (currentTurnUnit.id === uid) {
-                    setTimeout(async () => {
-                        await db.ref(`rooms/${roomId}/combat/actionComplete`).set(uid);
-                        console.log(`[END TURN] Signal sent for UID: ${uid}`);
-                    }, 500); 
-                } else { console.warn(`[END TURN] Attempted for ${uid}, but it's ${currentTurnUnit.name}'s turn. Signal NOT sent.`); }
-            } else { console.warn(`[END TURN] Combat state or turn order invalid. Signal NOT sent for UID: ${uid}`); }
-        } else { console.log(`[END TURN] Combat not active or not found. Signal NOT sent for UID: ${uid}`); }
-    } catch (error) { console.error("[END TURN] Error:", error); showAlert('เกิดข้อผิดพลาดในการจบเทิร์น!', 'error'); }
+            if (currentCombatState.turnOrder && currentCombatState.turnOrder[currentCombatState.currentTurnIndex].id === uid) {
+                await db.ref(`rooms/${roomId}/combat/actionComplete`).set(uid);
+            } 
+        } 
+    } catch (error) {
+        console.error("[END TURN] Error:", error);
+        showAlert('เกิดข้อผิดพลาดในการจบเทิร์น!', 'error');
+    }
 }
 
-function checkCooldown(casterData, skill, currentCombatState) {
+function checkCooldown(casterData, skill) {
     if (!skill.cooldown && !skill.successCooldown) return null; 
-    
-    const cdData = casterData.skillCooldowns || {}; 
-    const combatUses = casterData.combatSkillUses || {};
-    const currentTurn = (currentCombatState && typeof currentCombatState.currentTurnIndex === 'number') ? currentCombatState.currentTurnIndex : 0;
-    
-    const skillName = SKILLS_DATA[casterData.class]?.find(s=>s.id===skill.id)?.name || 
-                      SKILLS_DATA[casterData.race]?.find(s=>s.id===skill.id)?.name || 
-                      ITEM_SKILLS[casterData.equippedItems?.mainHand?.name]?.find(s=>s.id===skill.id)?.name || 
-                      skill.id;
 
-    if (skill.cooldown && skill.cooldown.type === 'PER_TURN') {
-        const turnEnds = cdData[skill.id] || 0;
-        if (turnEnds > currentTurn) { 
-            return `สกิล ${skillName} ยังติดคูลดาวน์! (รอ ${turnEnds - currentTurn} เทิร์น)`; 
+    const cdData = casterData.skillCooldowns || {};
+    const skillName = skill.name;
+
+    if (skill.cooldown && skill.cooldown.type === 'PERSONAL') {
+        const cdInfo = cdData[skill.id];
+        if (cdInfo && cdInfo.type === 'PERSONAL' && cdInfo.turnsLeft > 0) {
+            return `สกิล ${skillName} ยังติดคูลดาวน์! (รอ ${cdInfo.turnsLeft} เทิร์น)`;
         }
     }
+    
     if (skill.cooldown && skill.cooldown.type === 'PER_COMBAT') {
-        const uses = combatUses[skill.id] || 0; 
-        const allowedUses = skill.cooldown.uses;
-        if (uses >= allowedUses) { 
-            return `สกิล ${skillName} สามารถใช้ได้ ${allowedUses} ครั้งต่อการต่อสู้เท่านั้น`; 
+        const cdInfo = cdData[skill.id];
+        if (cdInfo && cdInfo.type === 'PER_COMBAT' && cdInfo.usesLeft <= 0) {
+            return `สกิล ${skillName} ใช้ได้ ${skill.cooldown.uses} ครั้งต่อการต่อสู้ (ใช้ครบแล้ว)`;
         }
     }
     
     if (skill.successCooldown && skill.successCooldown.type === 'PER_COMBAT') {
-         const uses = combatUses[skill.id + '_success'] || 0;
-         const allowedUses = skill.successCooldown.uses;
-         if (uses >= allowedUses) {
+        const cdInfo = cdData[skill.id + '_success']; 
+        if (cdInfo && cdInfo.type === 'PER_COMBAT' && cdInfo.usesLeft <= 0) {
              return `สกิล ${skillName} ติดคูลดาวน์ (ใช้งานสำเร็จไปแล้ว)`;
-         }
-    }
-    
-    return null;
-}
-
-async function checkConditions(casterData, targetData, skill, casterUid, roomId) {
-    // [ ⭐️ REFACTOR ⭐️ ]
-    // ลบ Logic การทอยเต๋าของ Excalibur ออกจากฟังก์ชันนี้
-    // เพราะใน skills-data.js เรากำหนดให้ Excalibur ใช้ 'successRoll' (d40 >= 35)
-    // ซึ่งจะถูกจัดการโดย performSuccessRoll() โดยอัตโนมัติ
-
-    if (!skill.condition) return { met: true };
-    const conditions = skill.condition.list || [skill.condition]; 
-    let failureReason = null; 
-    
-    for (const cond of conditions) {
-        switch (cond.type) {
-            case 'DICE_ROLL':
-                // (โค้ดนี้จะใช้สำหรับสกิลอื่นๆ ที่ยังใช้ 'condition' แบบเก่า)
-                const { value: rollConfirmed } = await Swal.fire({ 
-                    title: `กำลังร่ายสกิล ${skill.name}!`, 
-                    text: `คุณต้องทอย ${cond.dice} ให้ได้ ${cond.value}!`, 
-                    confirmButtonText: '🎲 ทอยเต๋า!', 
-                    allowOutsideClick: false 
-                });
-                if (!rollConfirmed) { failureReason = 'ROLL_CANCELLED'; break; }
-                
-                const diceResult = Math.floor(Math.random() * parseInt(cond.dice.replace('d', ''))) + 1; 
-                
-                if (diceResult !== cond.value) { 
-                    await Swal.fire('ล้มเหลว!', `คุณทอยได้ ${diceResult} (ต้องการ ${cond.value})`, 'error'); 
-                    failureReason = 'ROLL_FAILED'; 
-                }
-                else { 
-                    await Swal.fire('สำเร็จ!', `คุณทอยได้ ${diceResult}! สกิลทำงาน!`, 'success'); 
-                }
-                break;
-                
-            case 'HAS_ITEM': 
-                const hasItem = Object.values(casterData.equippedItems || {}).some(item => item && item.name === cond.itemName) || (casterData.inventory || []).some(item => item.name === cond.itemName); 
-                if (!hasItem) failureReason = `คุณไม่มีไอเทม "${cond.itemName}" เพื่อใช้สกิลนี้`; 
-                break;
-                
-            case 'STAT_GREATER_THAN': 
-                if (!targetData) { failureReason = "คุณต้องเลือกเป้าหมายก่อนใช้สกิลนี้"; break; } 
-                const casterStat = calcTotalStatFn(casterData, cond.stat); 
-                const targetStatValCond = (targetData.type === 'enemy') ? (targetData.stats[cond.stat.toUpperCase()] || 10) : calcTotalStatFn(targetData, cond.stat); 
-                if (!(casterStat > (targetStatValCond + (cond.amount || 0)))) { 
-                    failureReason = `สกิลล้มเหลว! (ต้องการ ${cond.stat} มากกว่าเป้าหมาย ${cond.amount || 0} หน่วย)`; 
-                }
-                break;
-        } 
-        if (failureReason) break;
-    }
-    
-    if (failureReason) { 
-        if (failureReason !== 'ROLL_FAILED' && failureReason !== 'ROLL_CANCELLED') showAlert(failureReason, 'error'); 
-        
-        if (failureReason === 'ROLL_FAILED' && skill.cooldown) {
-            const casterRef = db.ref(`rooms/${roomId}/playersByUid/${casterUid}`);
-            await setCooldown(casterRef, skill, true); 
         }
-        
-        if (failureReason !== 'ROLL_CANCELLED') await endPlayerTurn(casterUid, roomId); 
-        return { met: false }; 
     }
-    
-    return { met: true }; // (ลบ diceRoll ออก เพราะเราจะใช้ rollData จาก successRoll)
+
+    return null; 
 }
 
+async function setCooldown(casterRef, skill, failed = false) {
+    
+    if (failed) {
+        if (skill.successRoll && skill.successRoll.failCooldown) {
+            const turns = skill.successRoll.failCooldown.turns || 3;
+            const newCd = { type: 'PERSONAL', turnsLeft: turns };
+            await casterRef.child('skillCooldowns').child(skill.id).set(newCd);
+        }
+        return;
+    }
+
+    if (skill.cooldown) {
+        if (skill.cooldown.type === 'PERSONAL') {
+            const turns = skill.cooldown.turns;
+            const newCd = { type: 'PERSONAL', turnsLeft: turns };
+            await casterRef.child('skillCooldowns').child(skill.id).set(newCd);
+        }
+        else if (skill.cooldown.type === 'PER_COMBAT') {
+            await casterRef.child('skillCooldowns').child(skill.id).transaction(cdInfo => {
+                if (!cdInfo) { 
+                    return { type: 'PER_COMBAT', usesLeft: skill.cooldown.uses - 1 };
+                }
+                cdInfo.usesLeft = (cdInfo.usesLeft || skill.cooldown.uses) - 1;
+                return cdInfo;
+            });
+        }
+    }
+    
+    if (skill.successCooldown && skill.successCooldown.type === 'PER_COMBAT') {
+         await casterRef.child('skillCooldowns').child(skill.id + '_success').set({
+             type: 'PER_COMBAT',
+             usesLeft: 0 
+         });
+    }
+}
 
 async function performSuccessRoll(casterData, targetData, skill, options) {
     if (!skill.successRoll) return { success: true, rollData: {} }; 
 
-    // [ ⭐️ REFACTOR & FIX ⭐️ ]
-    // ทำให้รองรับลูกเต๋าขนาดอื่น (เช่น d40 ของ Excalibur)
-    const diceType = skill.successRoll.dice || 'd20';
+    const diceType = skill.successRoll.check || 'd20'; 
     const diceSize = parseInt(diceType.replace('d', ''));
     const casterRoll = Math.floor(Math.random() * diceSize) + 1;
-    // [ ⭐️ END FIX ⭐️ ]
 
-    const casterStatVal = calcTotalStatFn(casterData, skill.scalingStat || 'WIS');
-    const casterBonus = (diceSize === 20) ? getStatBonusFn(casterStatVal) : 0; // (โบนัส Stat จะใช้กับ d20 เท่านั้น)
+    // [ ⭐️ KONGFA-FIX ⭐️ ]
+    // (ใช้ calculateTotalStat ที่โหลดมาจาก dashboard-script)
+    const casterStatVal = calculateTotalStat(casterData, skill.scalingStat || 'WIS');
+    const casterBonus = (diceSize === 20) ? getStatBonus(casterStatVal) : 0; 
     let totalCasterRoll = casterRoll + casterBonus;
 
     let targetRoll = 0;
     let totalTargetRoll = 0;
-    let dc = skill.successRoll.baseDC || 10;
-    let rollType = skill.successRoll.type || 'STANDARD';
+    let dc = skill.successRoll.dc || 10; 
     
     let resultText = `คุณทอย (${diceType}): ${casterRoll}`;
     if (diceSize === 20) {
         resultText += ` + โบนัส ${skill.scalingStat || 'WIS'}: ${casterBonus} = **${totalCasterRoll}**<br>`;
     } else {
-        resultText += ` = **${totalCasterRoll}**<br>`; // (d40 ไม่ต้องบวกโบนัส)
+        resultText += ` = **${totalCasterRoll}**<br>`; 
     }
 
     if (skill.successRoll.resistStat && targetData) {
-        const targetStatVal = (targetData.type === 'enemy') ? (targetData.stats?.[skill.successRoll.resistStat.toUpperCase()] || 10) : calcTotalStatFn(targetData, skill.successRoll.resistStat);
-        const targetBonus = getStatBonusFn(targetStatVal);
+        // [ ⭐️ KONGFA-FIX ⭐️ ]
+        // (ใช้ getStatBonus ที่โหลดมาจาก charector.js)
+        const targetStatVal = (targetData.type === 'enemy') ? (targetData.stats?.[skill.successRoll.resistStat.toUpperCase()] || 10) : calculateTotalStat(targetData, skill.successRoll.resistStat);
+        const targetBonus = getStatBonus(targetStatVal);
         
-        if (rollType === 'CONTESTED') {
+        if (diceType.includes('_CONTESTED')) { 
             targetRoll = Math.floor(Math.random() * 20) + 1;
             totalTargetRoll = targetRoll + targetBonus;
             dc = totalTargetRoll; 
             resultText += `เป้าหมายทอย (d20): ${targetRoll} + โบนัส ${skill.successRoll.resistStat}: ${targetBonus} = **${totalTargetRoll}**`;
-        } else {
+        } else { 
             dc += targetBonus; 
-            resultText += `ค่าความยาก (DC): ${dc} (Base ${skill.successRoll.baseDC || 10} + Resist Bonus ${targetBonus})`;
+            resultText += `ค่าความยาก (DC): ${dc} (Base ${skill.successRoll.dc || 10} + Resist Bonus ${targetBonus})`;
         }
-    } else if (skill.successRoll.resistStat === null) {
-        // (สำหรับ Excalibur ที่ resistStat: null)
+    } else {
         resultText += `ค่าความยาก (DC): **${dc}**`;
-    }
-    
-    if (skill.effect.type === 'SELECTABLE_TEMP_STAT_BUFF' && options.selectedStats) {
-        const choiceCost = (options.selectedStats.length || 0) * (skill.successRoll.dcPerChoice || 0);
-        dc += choiceCost;
-        resultText += ` (บวก ${choiceCost} จากการเลือก ${options.selectedStats.length} อย่าง)`;
     }
 
     const success = totalCasterRoll >= dc;
@@ -186,42 +495,9 @@ async function performSuccessRoll(casterData, targetData, skill, options) {
         title: success ? 'สกิลทำงานสำเร็จ!' : 'สกิลล้มเหลว!', 
         html: resultText, 
         icon: success ? 'success' : 'error', 
-        timer: 3000, 
-        timerProgressBar: true, 
-        showConfirmButton: false 
     });
 
-    // [ ⭐️ FIX ⭐️ ] ส่งผลทอย (CasterRoll) กลับไปให้ applyEffect (สำหรับ Excalibur)
-    return { success, rollData: { totalCasterRoll: casterRoll, dc } };
-}
-
-async function setCooldown(casterRef, skill, failed = false) {
-    const currentTurnSnap = await db.ref(casterRef.parent.parent).child('combat/currentTurnIndex').get();
-    const currentTurn = currentTurnSnap.val() || 0;
-
-    if (failed) {
-        if (skill.cooldown && skill.cooldown.type === 'PER_TURN') {
-            const turnEnds = currentTurn + skill.cooldown.turns;
-            await casterRef.child('skillCooldowns').child(skill.id).set(turnEnds);
-            console.log(`[CD] Set FAILED cooldown for ${skill.id} until turn ${turnEnds}`);
-        }
-        return;
-    }
-
-    if (skill.cooldown && skill.cooldown.type === 'PER_TURN') {
-        const turnEnds = currentTurn + skill.cooldown.turns;
-        await casterRef.child('skillCooldowns').child(skill.id).set(turnEnds);
-        console.log(`[CD] Set turn cooldown for ${skill.id} until turn ${turnEnds}`);
-    }
-    else if (skill.cooldown && skill.cooldown.type === 'PER_COMBAT') {
-        await casterRef.child('combatSkillUses').child(skill.id).transaction(uses => (uses || 0) + 1);
-        console.log(`[CD] Incremented combat uses for ${skill.id}`);
-    }
-    
-    if (skill.successCooldown && skill.successCooldown.type === 'PER_COMBAT') {
-         await casterRef.child('combatSkillUses').child(skill.id + '_success').transaction(uses => (uses || 0) + skill.successCooldown.uses);
-         console.log(`[CD] Set SUCCESS cooldown for ${skill.id}`);
-    }
+    return { success, rollData: { casterRoll: casterRoll, dc } };
 }
 
 async function useSkillOnTarget(skillId, targetId, options = {}) {
@@ -231,19 +507,26 @@ async function useSkillOnTarget(skillId, targetId, options = {}) {
 
     const combatSnap = await db.ref(`rooms/${roomId}/combat`).get();
     const currentCombatState = combatSnap.val() || {};
-    if (!currentCombatState.isActive || currentCombatState.turnOrder[currentCombatState.currentTurnIndex].id !== casterUid) {
-        return; 
+    if (currentCombatState.isActive && currentCombatState.turnOrder[currentCombatState.currentTurnIndex].id !== casterUid) {
+        return showAlert('ยังไม่ถึงเทิร์นของคุณ!', 'warning');
     }
 
     const casterData = (typeof allPlayersInRoom !== 'undefined' && allPlayersInRoom) ? allPlayersInRoom[casterUid] : null; 
-    if (!casterData) { showAlert('ไม่พบข้อมูลผู้ใช้ปัจจุบัน!', 'error'); return; }
+    if (!casterData) { showAlert('ไม่พบข้อมูลผู้ใช้ปัจจุบัน!', 'error'); return; } 
+    if (!casterData.uid) casterData.uid = casterUid; 
     
-    let combinedSkills = [...(SKILLS_DATA[casterData.class] || []), ...(SKILLS_DATA[casterData.race] || [])];
-    const mainHand = casterData.equippedItems?.mainHand;
-    if (mainHand && ITEM_SKILLS[mainHand.name]) { 
-        ITEM_SKILLS[mainHand.name].forEach(itemSkill => { 
-            if (!combinedSkills.some(s => s.id === itemSkill.id)) combinedSkills.push(itemSkill); 
-        }); 
+    let combinedSkills = [];
+    if (typeof SKILL_DATA !== 'undefined') {
+        if (casterData.classMain && SKILL_DATA[casterData.classMain]) combinedSkills.push(...(SKILL_DATA[casterData.classMain] || []));
+        if (casterData.classSub && SKILL_DATA[casterData.classSub]) combinedSkills.push(...(SKILL_DATA[casterData.classSub] || []));
+    }
+    if (typeof RACE_DATA !== 'undefined') {
+        const raceId = casterData.raceEvolved || casterData.race;
+        if (RACE_DATA[raceId] && RACE_DATA[raceId].skills) {
+            RACE_DATA[raceId].skills.forEach(id => {
+                if(SKILL_DATA[id]) combinedSkills.push(SKILL_DATA[id]);
+            });
+        }
     }
 
     const skill = combinedSkills.find(s => s.id === skillId);
@@ -253,83 +536,82 @@ async function useSkillOnTarget(skillId, targetId, options = {}) {
     const casterRef = db.ref(`rooms/${roomId}/playersByUid/${casterUid}`); 
     let targetData = null; 
     let targetRef = null;
+    let targetType = 'single';
 
-    if (skill.targetType === 'self') { 
+    if (skill.targetType === 'self' || targetId === casterUid) { 
         targetData = { ...casterData }; if(!targetData.type) targetData.type = 'player'; 
         targetRef = casterRef; 
     }
     else if (skill.targetType.includes('enemy')) { 
+        if(skill.targetType.includes('_all')) targetType = 'enemy_all';
+        
         targetData = (typeof allEnemiesInRoom !== 'undefined' && allEnemiesInRoom) ? allEnemiesInRoom[targetId] : null; 
-        if (!targetData) { showAlert('ไม่พบข้อมูลเป้าหมายศัตรู!', 'error'); return; } 
-        targetData = { ...targetData }; if(!targetData.type) targetData.type = 'enemy'; 
-        targetRef = db.ref(`rooms/${roomId}/enemies/${targetId}`); 
+        if (!targetData && targetType === 'single') { showAlert('ไม่พบข้อมูลเป้าหมายศัตรู!', 'error'); return; } 
+        if(targetData) {
+             targetData = { ...targetData }; if(!targetData.type) targetData.type = 'enemy'; 
+             targetRef = db.ref(`rooms/${roomId}/enemies/${targetId}`); 
+        }
     }
     else if (skill.targetType.includes('teammate')) { 
+        if(skill.targetType.includes('_all')) targetType = 'teammate_all';
+        
         if (skill.id.includes('cleric_heal') && targetId === casterUid) {
             return showAlert('นักบวช/นักบุญหญิง ไม่สามารถฮีลตัวเองได้!', 'warning');
         }
         targetData = (typeof allPlayersInRoom !== 'undefined' && allPlayersInRoom) ? allPlayersInRoom[targetId] : null; 
-        if (!targetData) { showAlert('ไม่พบข้อมูลเป้าหมายเพื่อนร่วมทีม!', 'error'); return; } 
-        targetData = { ...targetData }; if(!targetData.type) targetData.type = 'player'; 
-        targetRef = db.ref(`rooms/${roomId}/playersByUid/${targetId}`); 
+        if (!targetData && targetType === 'single') { showAlert('ไม่พบข้อมูลเป้าหมายเพื่อนร่วมทีม!', 'error'); return; } 
+        if(targetData) {
+            targetData = { ...targetData }; if(!targetData.type) targetData.type = 'player'; 
+            targetRef = db.ref(`rooms/${roomId}/playersByUid/${targetId}`); 
+        }
     }
     else { showAlert('ประเภทเป้าหมายสกิลไม่รองรับ', 'error'); return; }
     
-    const cdError = checkCooldown(casterData, skill, currentCombatState); 
+    const cdError = checkCooldown(casterData, skill); 
     if (cdError) { showAlert(cdError, 'warning'); return; }
 
-    if (skill.condition && skill.condition.target === 'ENEMY' && targetData.type !== 'enemy') {
-        return showAlert('คุณต้องเลือกเป้าหมาย (ศัตรู) ก่อนใช้สกิลนี้', 'warning');
-    }
-
-    const conditionResult = await checkConditions(casterData, targetData, skill, casterUid, roomId); 
-    if (!conditionResult.met) return; 
-
-    // [ ⭐️ REFACTOR ⭐️ ]
-    // rollData ตอนนี้จะเก็บ { totalCasterRoll, dc } ซึ่ง totalCasterRoll คือผลทอยเต๋า (เช่น d40)
-    const { success, rollData } = await performSuccessRoll(casterData, targetData, skill, options); 
-    if (!success) { 
-        // [ ⭐️ NEW ⭐️ ] ถ้าทอยสกิล (เช่น Excalibur) ล้มเหลว ให้ติด Cooldown แบบ "ล้มเหลว"
-        if (skill.cooldown) {
-            await setCooldown(casterRef, skill, true); // true = ติด Cooldown แบบล้มเหลว
-        }
-        await endPlayerTurn(casterUid, roomId); 
-        return; 
-    }
-
-    let skillOutcome = null;
     try {
-        // [ ⭐️ REFACTOR ⭐️ ] ส่ง rollData (ที่มีผลทอยเต๋า) เข้าไปใน applyEffect
+        const { success, rollData } = await performSuccessRoll(casterData, targetData, skill, options); 
+        if (!success) { 
+            await setCooldown(casterRef, skill, true); 
+            await endPlayerTurn(casterUid, roomId); 
+            return; 
+        }
+
+        let skillOutcome = null;
         const effectOptions = { ...options, rollData: rollData };
         
-        if (skill.targetType === 'enemy_all' || skill.targetType === 'teammate_all') {
-            const allTargets = (skill.targetType === 'enemy_all') ? allEnemiesInRoom : allPlayersInRoom;
+        if (targetType === 'enemy_all' || targetType === 'teammate_all' || skill.targetType === 'teammate_all_self') {
+            const allTargets = (targetType === 'enemy_all') ? allEnemiesInRoom : allPlayersInRoom;
             for (const tId in allTargets) {
-                if (skill.targetType === 'teammate_all' && tId === casterUid && !skill.id.includes('sage_')) continue; 
+                if (targetType.includes('teammate') && tId === casterUid && skill.id.includes('cleric_heal')) continue;
+                if (skill.targetType === 'teammate_all' && tId === casterUid) continue;
                 
-                const tData = { ...allTargets[tId], type: (skill.targetType === 'enemy_all' ? 'enemy' : 'player') };
-                const tRef = db.ref(`rooms/${roomId}/${skill.targetType === 'enemy_all' ? 'enemies' : 'playersByUid'}/${tId}`);
+                const tData = { ...allTargets[tId], type: (targetType === 'enemy_all' ? 'enemy' : 'player') };
+                const tRef = db.ref(`rooms/${roomId}/${targetType === 'enemy_all' ? 'enemies' : 'playersByUid'}/${tId}`);
                 
                 await applyEffect(casterRef, tRef, casterData, tData, skill, effectOptions);
             }
             skillOutcome = { statusApplied: `ส่งผลต่อเป้าหมายทั้งหมด` };
             
         } else if (targetRef) {
-            skillOutcome = await applyEffect(casterRef, targetRef, casterData, targetData, skill, effectOptions);
+            skillOutcome = await applyEffect(casterRef, tRef, casterData, targetData, skill, effectOptions);
         }
 
         if (skill.selfEffect) {
             await applyEffect(casterRef, casterRef, casterData, casterData, { ...skill, effect: skill.selfEffect }, effectOptions);
         }
         
-        if (typeof displaySkillOutcome === 'function') displaySkillOutcome(skill, targetData, skillOutcome);
+         Swal.fire({
+            title: `ใช้สกิล ${skill.name} สำเร็จ!`,
+            text: skillOutcome?.statusApplied || `สร้างความเสียหาย ${skillOutcome?.damageDealt || 0} / ฮีล ${skillOutcome?.healAmount || 0}`,
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false
+         });
         
         await setCooldown(casterRef, skill, false);
-         
-         if (skill.id === 'sm_elemental_blade') {
-             showAlert('คุณใช้เทิร์นนี้ในการร่ายเวทย์!', 'info');
-         }
-         await endPlayerTurn(casterUid, roomId); 
+        await endPlayerTurn(casterUid, roomId); 
          
     } catch (error) { 
         console.error("Error applying skill effect:", error); 
@@ -338,370 +620,678 @@ async function useSkillOnTarget(skillId, targetId, options = {}) {
     }
 }
 
-
 async function applyEffect(casterRef, targetRef, casterData, targetData, skill, options = {}) {
     const effect = skill.effect;
-    const calcTotalStatFnLocal = calcTotalStatFn;
-    const calcHPFnLocal = calcHPFn;
-    const getStatBonusFnLocal = getStatBonusFn;
-
+    
     let outcome = { damageDealt: 0, healAmount: 0, statusApplied: null };
 
     await targetRef.transaction(currentData => {
         if (currentData === null) { console.warn(`[TRANSACTION ${skill.id}] Target data is null, aborting.`); return; }
+         
          if (!currentData.type) currentData.type = targetData.type;
          if (!currentData.race && targetData.type === 'player') currentData.race = targetData.race;
-         if (!currentData.class && targetData.type === 'player') currentData.class = targetData.class;
+         if (!currentData.classMain && targetData.type === 'player') currentData.classMain = targetData.classMain;
          if (!currentData.stats) currentData.stats = { ...(targetData.stats || {}) };
          if (!currentData.activeEffects) currentData.activeEffects = [];
 
         const duration = effect.duration || (effect.durationDice ? (Math.floor(Math.random() * parseInt(effect.durationDice.replace('d', ''))) + 1) : 3);
         const amount = effect.amount || (effect.amountDice ? (Math.floor(Math.random() * parseInt(effect.amountDice.replace('d', ''))) + 1) : 0);
-
-        let tempDataForMaxHpCalc = JSON.parse(JSON.stringify(currentData));
-        const currentFinalCon_Before = calcTotalStatFnLocal(tempDataForMaxHpCalc, 'CON');
-        const currentTheoreticalMaxHp = calcHPFnLocal(tempDataForMaxHpCalc.race, tempDataForMaxHpCalc.class, currentFinalCon_Before);
         
-        console.log(`[TRANSACTION ${skill.id}] Before effect - Current HP: ${currentData.hp}, Theoretical MaxHP: ${currentTheoreticalMaxHp}, Stored MaxHP: ${currentData.maxHp}`);
+        let tempDataForMaxHpCalc = JSON.parse(JSON.stringify(currentData));
+        // (ใช้ calculateTotalStat และ calculateHP ที่โหลดมาแล้ว)
+        const currentFinalCon_Before = calculateTotalStat(tempDataForMaxHpCalc, 'CON');
+        const currentTheoreticalMaxHp = calculateHP(tempDataForMaxHpCalc.race, tempDataForMaxHpCalc.classMain, currentFinalCon_Before);
+        
         let conChangedInTransaction = false; 
 
-        // =================================================================
-        // [ ⭐️ REFACTOR ⭐️ ]
-        // แบ่ง Logic การทำงานของ Effect ออกเป็น Helper Functions ตามหมวดหมู่
-        // =================================================================
-
-        /**
-         * หมวดหมู่ 1: บัฟ, ดีบัฟ, และการเปลี่ยนแปลงสถานะชั่วคราว
-         */
         function applyBuffDebuff() {
             switch(effect.type) {
-                case 'TEMP_STAT_BUFF': case 'MULTI_TEMP_STAT': case 'MULTI_TEMP_STAT_PERCENT': case 'ALL_STATS_BUFF_PERCENT':
+                case 'ALL_TEMP_STAT_PERCENT': 
+                case 'MULTI_TEMP_STAT_PERCENT':
                     let statsToApply = [];
-                    if (effect.type === 'ALL_STATS_BUFF_PERCENT') statsToApply = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].map(s => ({ stat: s, type: 'PERCENT', amount: effect.amount }));
-                    else if (effect.stats.constructor === Array) statsToApply = effect.stats;
-                    else for (const statKey in effect.stats) statsToApply.push({ stat: statKey, type: (effect.stats[statKey].type || 'FLAT'), amount: (effect.stats[statKey].amount != undefined ? effect.stats[statKey].amount : effect.stats[statKey]), amountDice: effect.stats[statKey].amountDice });
+                    if (effect.type === 'ALL_TEMP_STAT_PERCENT') statsToApply = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].map(s => ({ stat: s, amount: effect.amount || amount }));
+                    else statsToApply = effect.stats; 
 
                     let buffDesc = [];
                     statsToApply.forEach(mod => {
-                        let finalAmount = mod.amount; if (mod.type === 'SET_VALUE' && finalAmount === 0) {} else { finalAmount = mod.amount !== undefined ? mod.amount : 0; if(mod.amountDice) finalAmount = (Math.floor(Math.random() * parseInt(mod.amountDice.replace('d', ''))) + 1); }
-                        currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'BUFF', stat: mod.stat, modType: mod.type, amount: finalAmount, turnsLeft: duration });
-                        buffDesc.push(`${mod.stat} ${mod.type === 'PERCENT' ? finalAmount+'%' : (mod.type === 'SET_VALUE' ? '='+finalAmount : (finalAmount>=0?'+':'')+finalAmount)}`);
+                        currentData.activeEffects.push({ 
+                            skillId: skill.id, name: skill.name, type: 'BUFF', 
+                            stat: mod.stat, modType: 'PERCENT', amount: mod.amount, 
+                            turnsLeft: duration 
+                        });
+                        buffDesc.push(`${mod.stat} ${mod.amount >= 0 ? '+' : ''}${mod.amount}%`);
                         if (mod.stat === 'CON') conChangedInTransaction = true;
                     });
                     outcome.statusApplied = `ได้รับบัฟ ${buffDesc.join(', ')} (${duration} เทิร์น)`;
                     break;
                 
-                case 'TEMP_LEVEL_BUFF': // [ ⭐️ NEW ⭐️ ] สกิลใหม่นักปราชญ์
-                    currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'BUFF', stat: 'Level', modType: 'FLAT', amount: amount, turnsLeft: duration });
-                    outcome.statusApplied = `ได้รับบัฟ เพิ่มเลเวล +${amount} (${duration} เทิร์น)`;
-                    // (Logic การคำนวณ Stat จากเลเวลที่เพิ่ม ต้องไปทำใน calculateTotalStat)
-                    conChangedInTransaction = true; // (ถือว่า CON อาจจะเปลี่ยน)
+                case 'ALL_TEMP_STAT_DEBUFF_PERCENT':
+                    currentData.activeEffects.push({ 
+                        skillId: skill.id, name: skill.name, type: 'DEBUFF', 
+                        stat: 'ALL', modType: 'PERCENT', amount: -Math.abs(amount), 
+                        turnsLeft: duration 
+                    });
+                    outcome.statusApplied = `ติดดีบัฟ ลดทุกสเตตัส ${amount}% (${duration} เทิร์น)`;
+                    conChangedInTransaction = true; 
                     break;
 
-                case 'SELECTABLE_TEMP_STAT_BUFF':
-                     if (options.selectedStats) {
-                        const amountBuffBase = amount; 
-                        const amountBuff = amountBuffBase + (skill.effect.bonusPercent ? (amountBuffBase * (skill.effect.bonusPercent / 100)) : 0);
-                        let buffDescSel = [];
-                        options.selectedStats.forEach(stat => { currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'BUFF', stat: stat, modType: 'FLAT', amount: Math.floor(amountBuff), turnsLeft: duration }); buffDescSel.push(`${stat} +${Math.floor(amountBuff)}`); if (stat === 'CON') conChangedInTransaction = true; });
-                        outcome.statusApplied = `ได้รับบัฟ ${buffDescSel.join(', ')} (${duration} เทิร์น)`;
-                    } break;
+                case 'TEMP_LEVEL_PERCENT': 
+                    currentData.activeEffects.push({ 
+                        skillId: skill.id, name: skill.name, type: 'TEMP_LEVEL_PERCENT', 
+                        stat: 'Level', modType: 'PERCENT', amount: amount, 
+                        turnsLeft: duration 
+                    });
+                    outcome.statusApplied = `ได้รับบัฟ เพิ่มเลเวล +${amount}% (${duration} เทิร์น)`;
+                    conChangedInTransaction = true; 
+                    break;
+
+                case 'STATUS': 
+                    if(effect.status === 'INVISIBILE') {
+                        currentData.activeEffects.push({ 
+                            skillId: skill.id, name: skill.name, type: 'BUFF', 
+                            stat: 'Visibility', modType: 'SET_VALUE', amount: 'Invisible', 
+                            turnsLeft: duration 
+                        });
+                        outcome.statusApplied = `หายตัว (${duration} เทิร์น)`; 
+                    }
+                    break;
                 
-                case 'RANDOM_STAT_DEBUFF': case 'RANDOM_STAT_DEBUFF_PERCENT': 
-                    const statsList = ['STR','DEX','CON','INT','WIS','CHA']; 
-                    const randomStat = statsList[Math.floor(Math.random()*statsList.length)]; 
-                    const debuffAmount = amount; 
-                    currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'DEBUFF', stat: randomStat, modType: effect.type.includes('PERCENT') ? 'PERCENT' : 'FLAT', amount: -Math.abs(debuffAmount), turnsLeft: duration }); 
-                    outcome.statusApplied = `ดีบัฟ ${randomStat} (${duration} เทิร์น)`; 
-                    if(randomStat === 'CON') conChangedInTransaction = true; 
+                case 'WEAPON_BUFF':
+                    currentData.activeEffects.push({
+                        skillId: skill.id, name: skill.name, type: 'BUFF',
+                        stat: 'WeaponAttack', modType: 'FORMULA', buffId: effect.buffId,
+                        turnsLeft: duration
+                    });
+                    outcome.statusApplied = `เคลือบอาวุธ (${duration} เทิร์น)`;
                     break;
-                    
-                case 'INVISIBILITY': 
-                    currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'BUFF', stat: 'Visibility', modType: 'SET_VALUE', amount: 'Invisible', turnsLeft: duration }); 
-                    outcome.statusApplied = `หายตัว (${duration} เทิร์น)`; 
-                    break;
-                    
-                case 'TRUE_STRIKE': 
-                    currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'BUFF', stat: 'AttackRoll', modType: 'GUARANTEED_HIT', amount: 1, turnsLeft: duration }); 
-                    outcome.statusApplied = `โจมตีแม่นยำ (${duration} เทิร์น)`; 
-                    break;
-                    
-                case 'ELEMENTAL_BLADE': 
-                    const intBonus = getStatBonusFnLocal(calcTotalStatFnLocal(casterData, 'INT')); 
-                    const strBonus = getStatBonusFnLocal(calcTotalStatFnLocal(casterData, 'STR')); 
-                    const totalBonusPercent = Math.min(effect.bonusCap, (intBonus + strBonus)); 
-                    currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'BUFF', stat: 'WeaponDamage', modType: 'ELEMENTAL_PERCENT', amount: totalBonusPercent, turnsLeft: duration }); 
-                    outcome.statusApplied = `เคลือบดาบธาตุ (${totalBonusPercent}%, ${duration} เทิร์น)`; 
+                
+                case 'ELEMENT_SELECT':
+                    currentData.activeEffects = currentData.activeEffects.filter(e => e.type !== 'ELEMENTAL_BUFF');
+                    (options.selectedElement || []).forEach(element => {
+                        currentData.activeEffects.push({
+                            skillId: skill.id, name: skill.name, type: 'ELEMENTAL_BUFF',
+                            stat: 'Element', modType: 'SET_VALUE', amount: element,
+                            turnsLeft: 999 
+                        });
+                    });
+                    outcome.statusApplied = `เปลี่ยนธาตุเป็น ${options.selectedElement.join(', ')}`;
                     break;
             }
         }
         
-        /**
-         * หมวดหมู่ 2: การฟื้นฟู (ฮีล)
-         */
         function applyHealing() {
+            const isUndead = currentData.race === 'อันเดด';
+            
             switch(effect.type) {
-                case 'HEAL': 
-                    const healBonusH = getStatBonusFnLocal(calcTotalStatFnLocal(casterData, skill.scalingStat)); 
-                    const totalHeal = amount + healBonusH; 
-                    if (currentData.race === 'อันเดด' || currentData.type === 'อันเดด') {
-                        currentData.hp = (currentData.hp || 0) - totalHeal;
-                        outcome.damageDealt = totalHeal;
+                case 'FORMULA_HEAL': 
+                    // (ใช้ getStatBonus ที่โหลดมาแล้ว)
+                    const wisBonus = getStatBonus(calculateTotalStat(casterData, 'WIS'));
+                    let healAmount = 0;
+                    
+                    if (effect.formula === 'CLERIC_HEAL_V1') { 
+                        const d4_percent = (Math.floor(Math.random() * 4) + 1);
+                        healAmount = Math.floor(currentTheoreticalMaxHp * ((d4_percent + wisBonus) / 100));
+                    }
+                    else if (effect.formula === 'SAGE_HEAL_V1') { 
+                        const d6_percent = (Math.floor(Math.random() * 6) + 1);
+                        healAmount = Math.floor(currentTheoreticalMaxHp * ((d6_percent + wisBonus) / 100));
+                    }
+                    else if (effect.formula === 'ARCHSAGE_HEAL_V1') { 
+                        const casterCon = calculateTotalStat(casterData, 'CON');
+                        const casterMaxHp = calculateHP(casterData.race, casterData.classMain, casterCon);
+                        const d8_percent = (Math.floor(Math.random() * 8) + 1);
+                        const bonusFromHp = casterMaxHp * 0.25;
+                        healAmount = Math.floor(currentTheoreticalMaxHp * ((d8_percent + wisBonus) / 100)) + bonusFromHp;
+                    }
+                    
+                    if (isUndead) {
+                        currentData.hp = (currentData.hp || 0) - healAmount;
+                        outcome.damageDealt = healAmount;
                     } else {
-                        const healedHp = Math.min(currentTheoreticalMaxHp, (currentData.hp || 0) + totalHeal) - (currentData.hp || 0); 
+                        const healedHp = Math.min(currentTheoreticalMaxHp, (currentData.hp || 0) + healAmount) - (currentData.hp || 0); 
                         currentData.hp += healedHp; 
                         outcome.healAmount = healedHp; 
-                        console.log(`[TRANSACTION ${skill.id}] HEAL: Amount=${amount}, Bonus=${healBonusH}, Total=${totalHeal}, Actual Healed=${healedHp}, New HP=${currentData.hp}`);
-                    }
-                    break;
-                    
-                case 'HEAL_PERCENT': 
-                    const percentHealBaseHP = amount + getStatBonusFnLocal(calcTotalStatFnLocal(casterData, skill.scalingStat)); 
-                    const percentHealHP = percentHealBaseHP / 100; 
-                    const healAmountHP = Math.floor(currentTheoreticalMaxHp * percentHealHP); 
-                    
-                    if (currentData.race === 'อันเดด' || currentData.type === 'อันเดด') {
-                        currentData.hp = (currentData.hp || 0) - healAmountHP;
-                        outcome.damageDealt = healAmountHP;
-                    } else {
-                        const healedHpPercent = Math.min(currentTheoreticalMaxHp, (currentData.hp || 0) + healAmountHP) - (currentData.hp || 0); 
-                        currentData.hp += healedHpPercent; 
-                        outcome.healAmount = healedHpPercent; 
-                        console.log(`[TRANSACTION ${skill.id}] HEAL_PERCENT: Amount=${amount}, Bonus=${getStatBonusFnLocal(calcTotalStatFnLocal(casterData, skill.scalingStat))}, Percent=${percentHealHP*100}%, Actual Healed=${healedHpPercent}, New HP=${currentData.hp}`); 
                     }
                     break;
             }
         }
         
-        /**
-         * หมวดหมู่ 3: การโจมตีแบบสร้างความเสียหายโดยตรง (Fixed, Dice)
-         */
-        function applyDirectDamage() {
-             switch(effect.type) {
-                case 'TRUE_DAMAGE':
-                    let damageAmountTD = Number(effect.amount); 
-                    if (isNaN(damageAmountTD)) { console.error(`[TRANSACTION ${skill.id}] Invalid base damage amount:`, effect.amount); return; }
-                    currentData.hp = (currentData.hp || 0) - damageAmountTD; 
-                    outcome.damageDealt = damageAmountTD;
-                    break;
-                    
-                case 'PHYSICAL_DAMAGE':
-                    const physicalRoll = Math.floor(Math.random() * parseInt(effect.damageDice.replace('d',''))) + 1;
-                    const physicalBonus = getStatBonusFnLocal(calcTotalStatFnLocal(casterData, skill.scalingStat));
-                    const finalDamageP = Math.max(1, physicalRoll + physicalBonus);
-                    currentData.hp = (currentData.hp || 0) - finalDamageP; 
-                    outcome.damageDealt = finalDamageP;
-                    break;
-    
-                case 'MAGIC_DAMAGE_DYNAMIC': 
-                    const resistBonusM = getStatBonusFnLocal(currentData.stats?.[effect.resistStat.toUpperCase()] || 10); 
-                    const damageDiceTypeM = parseInt(effect.damageDiceMax.replace('d','')); 
-                    const magicRoll = Math.floor(Math.random() * damageDiceTypeM) + 1; 
-                    const magicBonus = getStatBonusFnLocal(calcTotalStatFnLocal(casterData, skill.scalingStat)); 
-                    const finalDamageM = Math.max(1, (magicRoll + magicBonus) - resistBonusM); 
-                    currentData.hp = (currentData.hp || 0) - finalDamageM; 
-                    outcome.damageDealt = finalDamageM; 
-                    console.log(`[TRANSACTION ${skill.id}] MAGIC_DAMAGE: Roll=${magicRoll}, Bonus=${magicBonus}, Resist=${resistBonusM}, Final=${finalDamageM}, New HP=${currentData.hp}`); 
-                    break;
-             }
-        }
-        
-        /**
-         * หมวดหมู่ 4: การโจมตีแบบ %HP (DOT และสูตรคำนวณพิเศษ)
-         */
-        function applyPercentDamage() {
+        function applyFormulaDamage() {
             let damage = 0;
             const targetCurrentHp = currentData.hp || 0;
             const targetMaxHp = currentData.maxHp || currentTheoreticalMaxHp;
+            const casterRoll = options.rollData?.casterRoll; 
 
-            switch(effect.type) {
-                case 'POISON_DAMAGE_PERCENT': 
-                    // (นี่คือ DOT, ไม่ใช่การโจมตีทันที แต่เป็นการแปะสถานะ)
-                    currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'DEBUFF', stat: 'HP', modType: 'DOT_PERCENT', amount: amount, turnsLeft: duration }); 
-                    outcome.statusApplied = `ติดพิษ (${amount}% ต่อเทิร์น, ${duration} เทิร์น)`; 
+            switch(effect.formula) {
+                case 'GOD_JUDGMENT': 
+                    if (targetCurrentHp < (targetMaxHp * 0.50)) {
+                        damage = targetCurrentHp; 
+                        outcome.statusApplied = "ถูกพิพากษา (ตายทันที)";
+                    } else {
+                        damage = Math.floor(targetMaxHp * 0.75); 
+                        outcome.statusApplied = "ถูกพิพากษา (75% MaxHP)";
+                    }
                     break;
 
-                case 'DAMAGE_HERO_WILL_FORMULA': // [ ⭐️ NEW ⭐️ ] สูตรผู้กล้า
-                    // สูตร: Dmg = ((dอาวุธ + STR Bonus) * 0.25) * HP ปัจจุบันศัตรู
-                    const strBonus = getStatBonusFnLocal(calcTotalStatFnLocal(casterData, 'STR'));
-                    const weapon = casterData.equippedItems?.mainHand;
-                    const weaponDie = weapon?.damage || 'd4'; // (ต้องเช็คว่า 'damage' เก็บค่า 'd12' ถูกต้อง)
-                    const dieSize = parseInt(weaponDie.replace('d', ''));
-                    const weaponRoll = Math.floor(Math.random() * dieSize) + 1;
+                case 'ARCHSAGE_JUDGMENT': 
+                    const reductionMap = { 40: 1, 39: 2, 38: 3, 37: 4, 36: 5, 35: 5 }; 
+                    const hpLossPercent = reductionMap[casterRoll] || 0;
                     
-                    const formulaBase = (weaponRoll + strBonus) * 0.25;
-                    damage = Math.floor(formulaBase * targetCurrentHp); 
+                    damage = targetCurrentHp; 
+                    outcome.statusApplied = `พิพากษาต้องห้าม (ทอย ${casterRoll})!`;
                     
-                    currentData.hp = targetCurrentHp - damage; 
-                    outcome.damageDealt = damage;
-                    console.log(`[TRANSACTION ${skill.id}] HERO WILL: (Roll ${weaponRoll} + STR ${strBonus}) * 0.25 * HP ${targetCurrentHp} = ${damage} Dmg`);
-                    break;
-                    
-                case 'DAMAGE_EXCALIBUR_FORMULA': // [ ⭐️ NEW ⭐️ ] สูตร Excalibur
-                    // สูตร: Dmg = (Map[roll 35-40] to [20-100%]) * HP ปัจจุบันศัตรู
-                    // (เราได้ผลทอยมาจาก 'options.rollData.totalCasterRoll')
-                    const roll = options.rollData?.totalCasterRoll;
-                    let percentMultiplier = 0;
-                    if (roll === 40) percentMultiplier = 1.00; // 100%
-                    else if (roll === 39) percentMultiplier = 0.85; // 85%
-                    else if (roll === 38) percentMultiplier = 0.75; // 75%
-                    else if (roll === 37) percentMultiplier = 0.60; // 60%
-                    else if (roll === 36) percentMultiplier = 0.40; // 40% (ไฟล์เก่าคุณมี 36 แต่สูตรใหม่มี 5 ค่า?)
-                    else if (roll === 35) percentMultiplier = 0.20; // 20%
-                    
-                    damage = Math.floor(targetCurrentHp * percentMultiplier); 
-                    
-                    currentData.hp = targetCurrentHp - damage; 
-                    outcome.damageDealt = damage;
-                    console.log(`[TRANSACTION ${skill.id}] EXCALIBUR: Roll ${roll} = ${percentMultiplier*100}% Dmg on ${targetCurrentHp} = ${damage} Dmg`);
-                    break;
-
-                case 'DAMAGE_SAGE_SACRIFICE_FORMULA': // [ ⭐️ NEW ⭐️ ] สูตรนักปราชญ์
-                    // สูตร: Dmg = ((WIS Bonus + INT Bonus) + 2) * HP ปัจจุบันศัตรู
-                    const wisBonus = getStatBonusFnLocal(calcTotalStatFnLocal(casterData, 'WIS'));
-                    const intBonus = getStatBonusFnLocal(calcTotalStatFnLocal(casterData, 'INT'));
-                    
-                    // (สูตรของคุณคือ ((...)+2) * HP) ถ้าค่านี้เป็น 10 * HP 100 = 1000 dmg
-                    // ผมขอแก้เป็น ((...)+2) / 100 * HP นะครับ
-                    const formulaPercent = (wisBonus + intBonus) + 2; 
-                    damage = Math.floor((formulaPercent / 100) * targetCurrentHp); 
-                    
-                    currentData.hp = targetCurrentHp - damage;
-                    outcome.damageDealt = damage;
-                    console.log(`[TRANSACTION ${skill.id}] SAGE SACRIFICE: (WIS ${wisBonus} + INT ${intBonus} + 2) = ${formulaPercent}% of ${targetCurrentHp} = ${damage} Dmg`);
+                    options.selfEffect = {
+                        type: 'PERMANENT_MAXHP_LOSS_PERCENT',
+                        amount: hpLossPercent
+                    };
                     break;
             }
+            
+            currentData.hp = (currentData.hp || 0) - damage; 
+            outcome.damageDealt = damage;
         }
-        
-        /**
-         * หมวดหมู่ 5: Logic พิเศษ (Taunt)
-         */
+
         function applySpecialLogic() {
             switch(effect.type) {
-                case 'TAUNT': 
-                    currentData.activeEffects = currentData.activeEffects.filter(e => !(e.type === 'TAUNT' && e.taunterUid === casterData.uid)); 
-                    currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'TAUNT', taunterUid: casterData.uid, turnsLeft: duration }); 
-                    outcome.statusApplied = `ยั่วยุ (${duration} เทิร์น)`; 
+                case 'CONTROL': 
+                    if (effect.status === 'TAUNT') {
+                        currentData.activeEffects.push({ 
+                            skillId: skill.id, name: skill.name, type: 'TAUNT', 
+                            taunterUid: casterData.uid, 
+                            turnsLeft: duration 
+                        }); 
+                        outcome.statusApplied = `ยั่วยุ (${duration} เทิร์น)`; 
+                    }
+                    break;
+                case 'DOT': 
+                    currentData.activeEffects.push({ 
+                        skillId: skill.id, name: skill.name, type: 'DEBUFF_DOT', 
+                        stat: 'HP', modType: 'DOT_PERCENT_CURRENT', amount: amount, 
+                        turnsLeft: duration 
+                    }); 
+                    outcome.statusApplied = `ติดพิษ (${amount}% ต่อเทิร์น, ${duration} เทิร์น)`; 
                     break;
             }
         }
 
-        // =================================================================
-        // [ ⭐️ REFACTOR ⭐️ ]
-        // Main Switch (เรียกใช้ Helper Functions ตามหมวดหมู่)
-        // =================================================================
-
         switch(effect.type) {
-            // --- หมวด 1: บัฟ / ดีบัฟ ---
-            case 'TEMP_STAT_BUFF':
-            case 'MULTI_TEMP_STAT':
+            case 'ALL_TEMP_STAT_PERCENT':
             case 'MULTI_TEMP_STAT_PERCENT':
-            case 'ALL_STATS_BUFF_PERCENT':
-            case 'SELECTABLE_TEMP_STAT_BUFF':
-            case 'RANDOM_STAT_DEBUFF':
-            case 'RANDOM_STAT_DEBUFF_PERCENT':
-            case 'INVISIBILITY':
-            case 'TRUE_STRIKE':
-            case 'ELEMENTAL_BLADE':
-            case 'TEMP_LEVEL_BUFF': // (สกิลใหม่)
+            case 'ALL_TEMP_STAT_DEBUFF_PERCENT':
+            case 'TEMP_LEVEL_PERCENT':
+            case 'STATUS':
+            case 'WEAPON_BUFF':
+            case 'ELEMENT_SELECT':
                 applyBuffDebuff();
                 break;
-
-            // --- หมวด 2: ฮีล ---
-            case 'HEAL':
-            case 'HEAL_PERCENT':
+            case 'FORMULA_HEAL':
                 applyHealing();
                 break;
-
-            // --- หมวด 3: โจมตีตรง ---
-            case 'TRUE_DAMAGE':
-            case 'PHYSICAL_DAMAGE':
-            case 'MAGIC_DAMAGE_DYNAMIC':
-                applyDirectDamage();
+            case 'FORMULA':
+                applyFormulaDamage();
                 break;
-                
-            // --- หมวด 4: โจมตี %HP และ DOT ---
-            case 'POISON_DAMAGE_PERCENT': // (DOT)
-            case 'DAMAGE_HERO_WILL_FORMULA': // (ใหม่)
-            case 'DAMAGE_EXCALIBUR_FORMULA': // (ใหม่)
-            case 'DAMAGE_SAGE_SACRIFICE_FORMULA': // (ใหม่)
-                applyPercentDamage();
-                break;
-
-            // --- หมวด 5: Logic พิเศษ ---
-            case 'TAUNT':
+            case 'CONTROL':
+            case 'DOT':
                 applySpecialLogic();
                 break;
-
-            // --- [ ⭐️ DEPRECATED ⭐️ ] ---
-            // (Logic เก่าเหล่านี้ ถูกแทนที่ด้วย Logic ใหม่ในหมวด 4 แล้ว)
-            case 'TRUE_DAMAGE_PERCENT_MAXHP': // (Excalibur เก่า)
-            case 'SACRIFICE_DAMAGE_PERCENT': // (Sage เก่า)
-                console.warn(`[TRANSACTION] Obsolete effect type (ถูกแทนที่แล้ว): ${effect.type}`);
-                break;
-                
-            // (Logic นี้ยังใช้งานอยู่ สำหรับสกิลนักฆ่า)
-            case 'DAMAGE_AS_PERCENT': 
-                const percentAmount = effect.percent || (effect.percentDice ? (Math.floor(Math.random() * parseInt(effect.percentDice.replace('d', ''))) + 1) : 25);
-                currentData.activeEffects.push({ skillId: skill.id, name: skill.name, type: 'BUFF', stat: 'OutgoingDamage', modType: 'DAMAGE_AS_PERCENT', amount: percentAmount, turnsLeft: duration }); 
-                outcome.statusApplied = `เปลี่ยนรูปแบบโจมตี (${percentAmount}%, ${duration} เทิร์น)`; 
-                break;
-
-            // --- [ ⭐️ PASSIVE ⭐️ ] ---
-            // (Passive ของจอมมาร 'PASSIVE_DAMAGE_WEAPON_DIE_PERCENT_FORMULA'
-            // จะไม่ถูกเรียกจากที่นี่ แต่จะถูกเรียกจาก "ฟังก์ชันคำนวณดาเมจหลัก"
-            // ซึ่งไม่ได้อยู่ในไฟล์นี้)
-
             default:
                 console.warn(`[TRANSACTION] Unhandled effect type: ${effect.type}`);
         }
 
-        // =================================================================
-        // [ ⭐️ REFACTOR ⭐️ ]
-        // (ส่วนท้ายของ Transaction - ไม่เปลี่ยนแปลง)
-        // =================================================================
-        console.log(`[TRANSACTION ${skill.id}] HP Before Final Checks: ${currentData.hp}`);
-        
         let finalTheoreticalMaxHp = currentTheoreticalMaxHp; 
 
         if (conChangedInTransaction) {
             let tempDataAfterEffect = JSON.parse(JSON.stringify(currentData));
-            const finalConAfter = calcTotalStatFnLocal(tempDataAfterEffect, 'CON'); 
-            finalTheoreticalMaxHp = calcHPFnLocal(tempDataAfterEffect.race, tempDataAfterEffect.class, finalConAfter); 
+            const finalConAfter = calculateTotalStat(tempDataAfterEffect, 'CON'); 
+            finalTheoreticalMaxHp = calculateHP(tempDataAfterEffect.race, tempDataAfterEffect.classMain, finalConAfter); 
             currentData.maxHp = finalTheoreticalMaxHp;
-            console.log(`[TRANSACTION ${skill.id}] CON changed. New Theoretical MaxHP: ${finalTheoreticalMaxHp}`);
         }
         
-        if (currentData.hp < 0) { currentData.hp = 0; console.log(`[TRANSACTION ${skill.id}] HP floored to 0.`); }
+        if (currentData.hp < 0) { currentData.hp = 0; }
         
         const ceilingHp = currentData.maxHp || finalTheoreticalMaxHp; 
         if (currentData.hp > ceilingHp) {
              currentData.hp = ceilingHp;
-             console.log(`[TRANSACTION ${skill.id}] HP capped to ${ceilingHp}.`);
         }
 
-        if (isNaN(currentData.hp)) { console.error(`[TRANSACTION ${skill.id}] HP became NaN! Aborting. Final checks state:`, { hp: currentData.hp, finalTheoreticalMaxHp }); return; }
-        console.log(`[TRANSACTION ${skill.id}] Final HP returned: ${currentData.hp}`);
-
-        return currentData;
+        if (isNaN(currentData.hp)) { 
+            console.error(`[TRANSACTION ${skill.id}] HP became NaN!`); 
+            return; 
+        }
+        
+        return currentData; 
     });
 
-    // (ส่วน SelfEffect - ไม่เปลี่ยนแปลง)
-    if (skill.selfEffect && skill.selfEffect.type === 'PERMANENT_STAT_LOSS') {
-         if (skill.selfEffect.stat === 'MaxHP') {
-             await casterRef.transaction(casterCurrentData => {
-                 if (casterCurrentData) { 
-                     const currentCon = calcTotalStatFnLocal(casterCurrentData, 'CON');
-                     const currentMax = casterCurrentData.maxHp || calcHPFnLocal(casterCurrentData.race, casterCurrentData.class, currentCon);
-                     
-                     const lossAmount = Math.floor(currentMax * (skill.selfEffect.percent / 100)); 
-                     casterCurrentData.maxHp = Math.max(1, currentMax - lossAmount); 
-                     casterCurrentData.hp = Math.min(casterCurrentData.maxHp, casterCurrentData.hp || 0); 
-                     console.log(`[SELF EFFECT] Sage used Sacrifice. Max HP reduced by ${lossAmount} to ${casterCurrentData.maxHp}`); 
-                 } 
-                 return casterCurrentData;
-             });
-         }
+    if (options.selfEffect && options.selfEffect.type === 'PERMANENT_MAXHP_LOSS_PERCENT') {
+         await casterRef.transaction(casterCurrentData => {
+             if (casterCurrentData) { 
+                 const currentCon = calculateTotalStat(casterCurrentData, 'CON');
+                 const currentMax = casterCurrentData.maxHp || calculateHP(casterCurrentData.race, casterCurrentData.classMain, currentCon);
+                 
+                 const lossAmount = Math.floor(currentMax * (options.selfEffect.amount / 100)); 
+                 casterCurrentData.maxHp = Math.max(1, currentMax - lossAmount); 
+                 casterCurrentData.hp = Math.min(casterCurrentData.maxHp, casterCurrentData.hp || 0); 
+                 console.log(`[SELF EFFECT] สกิล ${skill.id} ทำให้ Max HP ลดลง ${lossAmount} (เหลือ ${casterCurrentData.maxHp})`); 
+             } 
+             return casterCurrentData;
+         });
      }
      return outcome;
+}
+
+async function showSkillModal() {
+    const currentUserUid = firebase.auth().currentUser?.uid; 
+    const roomId = sessionStorage.getItem('roomId'); 
+    if (!currentUserUid || !roomId) return;
+    
+    showLoading("กำลังโหลดข้อมูลสกิล..."); 
+    let currentUser; 
+    let currentCombatStateForCheck;
+    
+    try {
+        const roomSnap = await db.ref(`rooms/${roomId}`).get(); 
+        if (!roomSnap.exists()) { hideLoading(); return showAlert('ไม่พบข้อมูลห้อง!', 'error'); } 
+        const roomData = roomSnap.val();
+        currentUser = roomData.playersByUid?.[currentUserUid]; 
+        currentCombatStateForCheck = roomData.combat || {};
+        if (!currentUser) { hideLoading(); return showAlert('ไม่พบข้อมูลตัวละคร!', 'error'); }
+         currentUser.uid = currentUserUid; 
+    } catch (error) { hideLoading(); return showAlert('เกิดข้อผิดพลาดในการโหลดข้อมูลสกิล', 'error'); } 
+    
+    hideLoading();
+    
+    if (currentCombatStateForCheck.isActive && currentCombatStateForCheck.turnOrder[currentCombatStateForCheck.currentTurnIndex].id !== currentUserUid) {
+        return showAlert('ยังไม่ถึงเทิร์นของคุณ!', 'warning');
+    }
+
+    let allSkills = [];
+    if (typeof SKILL_DATA !== 'undefined') {
+        if (currentUser.classMain && SKILL_DATA[currentUser.classMain]) allSkills.push(...(SKILL_DATA[currentUser.classMain] || []));
+        if (currentUser.classSub && SKILL_DATA[currentUser.classSub]) allSkills.push(...(SKILL_DATA[currentUser.classSub] || []));
+    }
+    if (typeof RACE_DATA !== 'undefined') {
+        const raceId = currentUser.raceEvolved || currentUser.race;
+        if (RACE_DATA[raceId] && RACE_DATA[raceId].skills) {
+            RACE_DATA[raceId].skills.forEach(id => {
+                if(SKILL_DATA[id]) allSkills.push(SKILL_DATA[id]);
+            });
+        }
+    }
+
+    const availableSkills = allSkills.filter(skill => skill.skillTrigger === 'ACTIVE');
+
+    if (!availableSkills || availableSkills.length === 0) return showAlert('คุณไม่มีสกิลที่สามารถใช้ได้', 'info');
+    
+    let skillButtonsHtml = '';
+    availableSkills.forEach(skill => {
+        const cdError = checkCooldown(currentUser, skill);
+        const isDisabled = cdError !== null; 
+        const title = isDisabled ? cdError : (skill.description || 'ไม่มีคำอธิบาย');
+        
+        skillButtonsHtml += `<button class="swal2-styled" onclick="selectSkillTarget('${skill.id}')" 
+            style="margin: 5px; ${isDisabled ? 'background-color: #6c757d; cursor: not-allowed;' : ''}" 
+            title="${title}" ${isDisabled ? 'disabled' : ''}>
+            ${skill.name}
+        </button>`;
+    });
+    
+    Swal.fire({ 
+        title: 'เลือกสกิล', 
+        html: `<div>${skillButtonsHtml}</div>`, 
+        showConfirmButton: false, 
+        showCancelButton: true, 
+        cancelButtonText: 'ปิด' 
+    });
+}
+
+async function selectSkillTarget(skillId) {
+    const currentUserUid = firebase.auth().currentUser?.uid;
+    const currentUser = currentCharacterData; 
+    if (!currentUser) return showAlert('ไม่พบข้อมูลผู้เล่น', 'error');
+
+    let allSkills = [];
+    if (typeof SKILL_DATA !== 'undefined') {
+        if (currentUser.classMain && SKILL_DATA[currentUser.classMain]) allSkills.push(...(SKILL_DATA[currentUser.classMain] || []));
+        if (currentUser.classSub && SKILL_DATA[currentUser.classSub]) allSkills.push(...(SKILL_DATA[currentUser.classSub] || []));
+    }
+    if (typeof RACE_DATA !== 'undefined') {
+        const raceId = currentUser.raceEvolved || currentUser.race;
+        if (RACE_DATA[raceId] && RACE_DATA[raceId].skills) {
+            RACE_DATA[raceId].skills.forEach(id => {
+                if(SKILL_DATA[id]) allSkills.push(SKILL_DATA[id]);
+            });
+        }
+    }
+    
+    const skill = allSkills.find(s => s.id === skillId); 
+    if (!skill) return;
+    
+    let targetOptions = {}; 
+    let options = {};
+
+    if (skill.targetType === 'self') {
+    } else if (skill.targetType.includes('teammate')) {
+         for (const uid in allPlayersInRoom) {
+             if (allPlayersInRoom[uid].hp > 0) { 
+                targetOptions[uid] = allPlayersInRoom[uid].name;
+             }
+         }
+    } else if (skill.targetType.includes('enemy')) {
+        const enemySelect = document.getElementById('enemyTargetSelect');
+        for(const option of enemySelect.options) {
+            if(option.value) targetOptions[option.value] = option.text;
+        }
+        if (Object.keys(targetOptions).length === 0) return showAlert('ไม่มีศัตรูให้เลือก!', 'warning');
+    }
+
+    if (skill.effect.type === 'ELEMENT_SELECT') {
+        const elementOptions = {};
+        skill.effect.elements.forEach(el => { elementOptions[el] = el; });
+        
+        const { value: selectedElement } = await Swal.fire({ 
+            title: `เลือกธาตุสำหรับ ${skill.name}`, 
+            input: 'select', 
+            inputOptions: elementOptions,
+            inputPlaceholder: 'เลือกธาตุ',
+            showCancelButton: true 
+        });
+        if (!selectedElement) return; 
+        options.selectedElement = [selectedElement]; 
+        
+        if (skill.effect.selectCount === 2) {
+             const { value: selectedElement2 } = await Swal.fire({ 
+                title: `เลือกธาตุที่ 2`, 
+                input: 'select', 
+                inputOptions: elementOptions,
+                showCancelButton: true 
+            });
+            if (selectedElement2) options.selectedElement.push(selectedElement2);
+        }
+    }
+
+    let targetIds = [];
+    if (skill.targetType.includes('_all') || skill.targetType.includes('_aoe') || skill.targetType.includes('_self')) { 
+         Swal.fire({ title: `กำลังร่าย ${skill.name}...`, text: `ส่งผลต่อ${skill.targetType.includes('teammate') ? 'เพื่อนร่วมทีม' : 'ศัตรู'}ทั้งหมด!`, icon: 'info', timer: 1500 });
+         targetIds = Object.keys(skill.targetType.includes('teammate') ? allPlayersInRoom : allEnemiesInRoom); 
+    
+    } else if (skill.targetType !== 'self') { 
+        const { value: selectedUid } = await Swal.fire({ 
+            title: `เลือกเป้าหมายสำหรับ "${skill.name}"`, 
+            input: 'select', 
+            inputOptions: targetOptions, 
+            inputPlaceholder: 'เลือกเป้าหมาย', 
+            showCancelButton: true 
+        }); 
+        if (!selectedUid) return; 
+        targetIds.push(selectedUid);
+    
+    } else { 
+        targetIds.push(currentUserUid);
+    }
+
+    if (targetIds.length > 0) {
+        Swal.close(); 
+        
+        if (targetIds.length > 1) {
+             useSkillOnTarget(skillId, 'all', options);
+        } else {
+             useSkillOnTarget(skillId, targetIds[0], options);
+        }
+    }
+}
+
+
+// =================================================================
+// ----------------- ตรรกะการโจมตี (ATTACK LOGIC) -----------------
+// =================================================================
+
+/**
+ * [ย้ายมา] โจมตี
+ */
+async function performAttackRoll() {
+    const uid = firebase.auth().currentUser?.uid; 
+    if (!uid || !combatState || !combatState.isActive || combatState.turnOrder[combatState.currentTurnIndex].id !== uid) return showAlert("ยังไม่ถึงเทิร์นของคุณ!", 'warning'); 
+    
+    const selectedEnemyKey = document.getElementById('enemyTargetSelect').value; 
+    if (!selectedEnemyKey) return showAlert("กรุณาเลือกเป้าหมาย!", 'warning'); 
+    
+    const roomId = sessionStorage.getItem('roomId');
+    const enemyData = allEnemiesInRoom[selectedEnemyKey];
+    const playerData = currentCharacterData; 
+    if (!enemyData || !playerData) return showAlert("ไม่พบข้อมูลเป้าหมายหรือผู้เล่น!", 'error');
+
+    document.getElementById('attackRollButton').disabled = true; 
+    document.getElementById('skillButton').disabled = true;
+
+    const enemyAC = 10 + Math.floor(((enemyData.stats?.DEX || 10) - 10) / 2); 
+    const roll = Math.floor(Math.random() * 20) + 1; 
+    
+    const mainWeapon = playerData.equippedItems?.mainHand;
+    let attackStat = 'STR';
+    // (ตรวจสอบว่าอาวุธใช้ DEX หรือไม่)
+    if (mainWeapon && (
+        (mainWeapon.weaponType === 'มีด' && (playerData.classMain === 'โจร' || playerData.classMain === 'นักฆ่า')) ||
+        (mainWeapon.weaponType === 'ธนู' && (playerData.classMain === 'เรนเจอร์' || playerData.classMain === 'อาเชอร์'))
+    )) {
+        attackStat = 'DEX';
+    }
+    
+    const attackBonus = getStatBonus(calculateTotalStat(playerData, attackStat));
+    
+    const totalAttack = roll + attackBonus;
+    
+    const resultCard = document.getElementById('rollResultCard'); 
+    resultCard.classList.remove('hidden'); 
+    const outcomeText = totalAttack >= enemyAC ? '✅ โจมตีโดน!' : '💥 โจมตีพลาด!';
+    let rollText = `ทอย (d20): ${roll} + ${attackStat} Bonus: ${attackBonus} = <strong>${totalAttack}</strong>`;
+    
+    resultCard.innerHTML = `<h4>ผลการโจมตี: ${enemyData.name}</h4><p>${rollText}</p><p>AC ศัตรู: ${enemyAC}</p><p class="outcome">${outcomeText}</p>`; 
+    resultCard.className = `result-card ${totalAttack >= enemyAC ? 'hit' : 'miss'}`;
+    
+    if (totalAttack >= enemyAC) { 
+        // [FIX] ถ้าโจมตีโดน, ให้เรียก performDamageRoll
+        document.getElementById('damageWeaponName').textContent = mainWeapon?.name || "มือเปล่า"; 
+        document.getElementById('damageDiceInfo').textContent = mainWeapon?.damageDice || "d4"; 
+        document.getElementById('damageRollSection').style.display = 'block'; 
+    } else { 
+        // [FIX] ถ้าโจมตีพลาด, ไม่ต้องลดความทนทาน
+        setTimeout(async () => { 
+            await endPlayerTurn(uid, roomId); 
+            resultCard.classList.add('hidden'); 
+        }, 2000); 
+    }
+}
+
+/**
+ * [ย้ายมา] คำนวณความเสียหาย
+ * [ ⭐️ KONGFA-FIX ⭐️ ] เพิ่มตรรกะความทนทาน "โจมตีโดน -1%"
+ * [ ⭐️ KONGFA-FIX (Bug 1) ⭐️ ] แก้ไขการเรียกสูตร %HP
+ */
+async function performDamageRoll() {
+    const uid = firebase.auth().currentUser?.uid; 
+    const roomId = sessionStorage.getItem('roomId'); 
+    const selectedEnemyKey = document.getElementById('enemyTargetSelect').value; 
+    if (!uid || !roomId || !selectedEnemyKey) return;
+    
+    document.getElementById('damageRollSection').style.display = 'none';
+    
+    const enemyRef = db.ref(`rooms/${roomId}/enemies/${selectedEnemyKey}`); 
+    const playerRef = db.ref(`rooms/${roomId}/playersByUid/${uid}`); // (สำหรับอัปเดตความทนทาน)
+    
+    const enemySnapshot = await enemyRef.get(); 
+    const playerSnapshot = await playerRef.get(); // (ดึงข้อมูลล่าสุด)
+    
+    if (!enemySnapshot.exists() || !playerSnapshot.exists()) return; 
+    
+    const enemyData = enemySnapshot.val();
+    let playerData = playerSnapshot.val(); // (ใช้ let เพราะอาจต้องอัปเดต)
+    
+    const mainWeapon = playerData.equippedItems?.mainHand;
+
+    // --- [ ⭐️ KONGFA-FIX ⭐️ ] ตรรกะความทนทาน "โจมตีโดน -1%" ---
+    if (mainWeapon) {
+        const newDurability = (mainWeapon.durability || 100) - 1;
+        
+        if (newDurability <= 0) {
+            // อาวุธพัง!
+            showAlert(`อาวุธ [${mainWeapon.name}] พัง! (ความทนทาน 0%)`, 'error');
+            
+            // (ต้องเรียกใช้ unequipItem ที่อยู่ในไฟล์นี้)
+            // (*** การเรียก unequipItem ภายในนี้จะซับซ้อนเพราะ transaction ***)
+            // (*** แก้ไข: ใช้วิธีอัปเดตตรงๆ และจบเทิร์น ***)
+
+            // 1. ถอดอาวุธออกจาก equippedItems
+            const updates = {};
+            updates[`equippedItems/mainHand`] = null;
+            
+            // 2. เพิ่มอาวุธที่พังกลับเข้า inventory
+            const itemToReturn = { ...mainWeapon, durability: 0, quantity: 1 };
+            delete itemToReturn.isProficient;
+            delete itemToReturn.isOffHand;
+            
+            let inventory = playerData.inventory || [];
+            const existingIdx = inventory.findIndex(i => i.name === itemToReturn.name && i.durability === 0);
+            if(existingIdx > -1) {
+                inventory[existingIdx].quantity++;
+            } else {
+                inventory.push(itemToReturn);
+            }
+            updates[`inventory`] = inventory;
+            
+            // 3. บันทึกการเปลี่ยนแปลง
+            await playerRef.update(updates);
+            
+            // 4. จบเทิร์น
+            await endPlayerTurn(uid, roomId); 
+            const resultCard = document.getElementById('rollResultCard'); 
+            resultCard.classList.add('hidden');
+            return; // (หยุดการโจมตี)
+            
+        } else {
+            // อัปเดตความทนทานใน Firebase
+            await playerRef.child('equippedItems/mainHand/durability').set(newDurability);
+            // (อัปเดตข้อมูล local)
+            playerData.equippedItems.mainHand.durability = newDurability;
+        }
+    }
+    // --- [ ⭐️ สิ้นสุดตรรกะความทนทาน ⭐️ ] ---
+
+    const diceTypeString = mainWeapon?.damageDice || 'd4';
+    const diceType = parseInt(diceTypeString.replace('d', ''));
+    const damageRoll = Math.floor(Math.random() * diceType) + 1;
+    
+    let damageStat = 'STR';
+    // (ตรวจสอบว่าอาวุธใช้ DEX หรือไม่)
+    if (mainWeapon && (
+        (mainWeapon.weaponType === 'มีด' && (playerData.classMain === 'โจร' || playerData.classMain === 'นักฆ่า')) ||
+        (mainWeapon.weaponType === 'ธนู' && (playerData.classMain === 'เรนเจอร์' || playerData.classMain === 'อาเชอร์'))
+    )) {
+        damageStat = 'DEX';
+    }
+    
+    let damageBonus = getStatBonus(calculateTotalStat(playerData, damageStat));
+    let totalDamage = Math.max(1, damageRoll + damageBonus);
+    let damageExplanation = `ทอย (${diceTypeString}): ${damageRoll} + ${damageStat} Bonus: ${damageBonus}`;
+
+    // --- [ ⭐️ เริ่มการคำนวณสูตร %HP (ข้อ 12) ⭐️ ] ---
+    
+    // [ ⭐️ KONGFA-FIX (Bug 1) ⭐️ ]
+    // 1. ตรวจสอบบัฟกดใช้ (Active Effect)
+    const formulaOverrideEffect = (playerData.activeEffects || []).find(e => e.stat === 'WeaponAttack' && e.modType === 'FORMULA' && e.buffId);
+    
+    // 2. ตรวจสอบสกิลติดตัว (Passive)
+    let formulaPassive = null;
+    if (typeof SKILL_DATA !== 'undefined' && SKILL_DATA[playerData.classMain]) {
+        // [แก้ไข] ค้นหา Passive ที่ถูกต้อง
+        formulaPassive = SKILL_DATA[playerData.classMain].find(s => 
+            s.skillTrigger === 'PASSIVE' && 
+            s.effect?.type === 'FORMULA_ATTACK_OVERRIDE'
+        );
+    }
+    if (!formulaPassive && playerData.classSub && SKILL_DATA[playerData.classSub]) {
+        // [แก้ไข] ค้นหา Passive ที่ถูกต้อง
+         formulaPassive = SKILL_DATA[playerData.classSub].find(s => 
+            s.skillTrigger === 'PASSIVE' && 
+            s.effect?.type === 'FORMULA_ATTACK_OVERRIDE'
+        );
+    }
+
+    // 3. เลือกแหล่งที่มาของสูตร (บัฟ > พาสซีฟ)
+    const formulaSource = formulaOverrideEffect || (formulaPassive ? formulaPassive.effect : null);
+
+    if (formulaSource) {
+        // [แก้ไข] ดึงชื่อสูตรจาก buffId (ถ้าเป็นบัฟ) หรือ formula (ถ้าเป็นพาสซีฟ)
+        const formulaId = formulaSource.buffId || formulaSource.formula;
+        
+        const targetCurrentHp = enemyData.hp || 0;
+        const intBonus = getStatBonus(calculateTotalStat(playerData, 'INT'));
+        const wisBonus = getStatBonus(calculateTotalStat(playerData, 'WIS'));
+        const strBonus = getStatBonus(calculateTotalStat(playerData, 'STR'));
+        
+        switch (formulaId) {
+            case 'HOLY_LIGHT_FORMULA_ATTACK': 
+                totalDamage = Math.floor(((damageRoll + damageBonus) * 0.15) * targetCurrentHp);
+                damageExplanation = `[ดาบแห่งแสง] (${damageRoll}+${damageBonus})*15% * ${targetCurrentHp}HP`;
+                break;
+            case 'MAGE_PASSIVE_V1': 
+                totalDamage = Math.floor(((damageRoll + intBonus) * 0.15) * targetCurrentHp);
+                damageExplanation = `[เวทย์ติดตัว] (${damageRoll}+${intBonus})*15% * ${targetCurrentHp}HP`;
+                break;
+            case 'MAGE_PASSIVE_V2': 
+                totalDamage = Math.floor(((damageRoll + intBonus + wisBonus) * 0.20) * targetCurrentHp);
+                damageExplanation = `[เวทย์ติดตัว V2] (${damageRoll}+${intBonus}+${wisBonus})*20% * ${targetCurrentHp}HP`;
+                break;
+            case 'MAGE_PASSIVE_V3': 
+                totalDamage = Math.floor(((damageRoll + intBonus + wisBonus) * 0.30) * targetCurrentHp);
+                damageExplanation = `[เวทย์ติดตัว V3] (${damageRoll}+${intBonus}+${wisBonus})*30% * ${targetCurrentHp}HP`;
+                break;
+            case 'MAGE_PASSIVE_V4': 
+                totalDamage = Math.floor(((damageRoll + intBonus + wisBonus) * 0.60) * targetCurrentHp);
+                damageExplanation = `[เวทย์ติดตัว V4] (${damageRoll}+${intBonus}+${wisBonus})*60% * ${targetCurrentHp}HP`;
+                break;
+            case 'MS_RUNE_BLADE_V1': 
+                totalDamage = Math.floor(((damageRoll + intBonus) * 0.10) * targetCurrentHp);
+                damageExplanation = `[ดาบมนตรา V1] (${damageRoll}+${intBonus})*10% * ${targetCurrentHp}HP`;
+                break;
+            
+            // [ ⭐️ KONGFA-FIX (Bug 1) ⭐️ ]
+            // เพิ่ม Case ที่หายไปจาก skills-data.js (MS_ARCANE_SLASH_V1, V2, V3)
+            case 'MS_ARCANE_SLASH_V1': 
+                 totalDamage = Math.floor(((damageRoll + strBonus + intBonus) * 0.15) * targetCurrentHp);
+                 damageExplanation = `[กายาผสานเวทย์ V1] (${damageRoll}+${strBonus}+${intBonus})*15% * ${targetCurrentHp}HP`;
+                 break;
+            case 'MS_ARCANE_SLASH_V2': // (จาก จอมดาบมนตรา)
+                 totalDamage = Math.floor(((damageRoll + strBonus + intBonus) * 0.25) * targetCurrentHp);
+                 damageExplanation = `[กายาผสานเวทย์ V2] (${damageRoll}+${strBonus}+${intBonus})*25% * ${targetCurrentHp}HP`;
+                 break;
+            case 'MS_ARCANE_SLASH_V3': // (จาก ราชันย์ดาบเวทย์)
+                 totalDamage = Math.floor(((damageRoll + strBonus + intBonus) * 0.35) * targetCurrentHp);
+                 damageExplanation = `[กายาผสานเวทย์ V3] (${damageRoll}+${strBonus}+${intBonus})*35% * ${targetCurrentHp}HP`;
+                 break;
+
+            case 'DL_PASSIVE_V1': 
+                 const demonStatBonus = Math.max(strBonus, intBonus);
+                 totalDamage = Math.floor(((damageRoll + demonStatBonus) * 0.15) * targetCurrentHp);
+                 damageExplanation = `[อำนาจจอมมาร] (${damageRoll}+${demonStatBonus})*15% * ${targetCurrentHp}HP`;
+                 break;
+        }
+        totalDamage = Math.max(1, totalDamage);
+    }
+    // --- [ ⭐️ สิ้นสุดการคำนวณสูตร %HP ⭐️ ] ---
+
+    const resultCard = document.getElementById('rollResultCard'); 
+    resultCard.innerHTML = `<h4>ผลความเสียหาย: ${enemyData.name}</h4><p>${damageExplanation} = <strong>${totalDamage}</strong></p><p class="outcome">🔥 สร้างความเสียหาย ${totalDamage} หน่วย! 🔥</p>`; 
+    resultCard.className = 'result-card hit';
+    
+    const newHp = (enemyData.hp || 0) - totalDamage;
+    
+    setTimeout(async () => {
+        if (newHp <= 0) { 
+            await enemyRef.remove(); 
+        } else { 
+            await enemyRef.child('hp').set(newHp); 
+        }
+        await endPlayerTurn(uid, roomId);
+        resultCard.classList.add('hidden');
+    }, 2000);
 }
